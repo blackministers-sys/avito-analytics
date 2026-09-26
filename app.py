@@ -1,6 +1,10 @@
+import os
 from flask import Flask, request
 
 app = Flask(__name__)
+
+AVITO_CLIENT_ID = os.environ.get("AVITO_CLIENT_ID")
+AVITO_CLIENT_SECRET = os.environ.get("AVITO_CLIENT_SECRET")
 
 
 @app.route("/")
@@ -17,7 +21,7 @@ def callback():
     code = request.args.get("code")
 
     if code:
-        return f"""
+        return """
         <h1>Avito API</h1>
         <p>Код авторизации получен.</p>
         <p>Можно продолжать подключение.</p>
