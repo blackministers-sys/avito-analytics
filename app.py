@@ -260,44 +260,85 @@ def analyze():
                 "rate":f'{r["rate"]:.2f}%'.replace(".",","),
                 "spend":money(r["Расходы"]),"cpa":money(r["cpa"]) if r["Контакты"] else "—"})
 
+        # Build evidence-based preliminary labels. Avoid strong conclusions from tiny samples.
         avg_cpa = cpa
         rows = []
+        row_actions = []
         for _, r in df.iterrows():
-            obj_cpa = r["Стоимость контакта, ₽"]
-            if r["Контакты"] == 0 and r["Расходы"] > 0:
-                status, kind = "Расходы без контактов", "bad"
-            elif r["Контакты"] > 0 and avg_cpa > 0 and obj_cpa <= avg_cpa:
-                status, kind = "Ниже средней стоимости", ""
-            elif r["Контакты"] > 0:
-                status, kind = "Выше средней стоимости", "warn"
-            else:
+            obj_cpa = float(r["Стоимость контакта, ₽"])
+            rv = float(r["Просмотры"])
+            rc = float(r["Контакты"])
+            rs = float(r["Расходы"])
+            if rc == 0 and rs > 0 and rv >= 100:
+                status, kind = "Проверить расходы", "bad"
+                action = "check"
+            elif rv < 100 or rc < 3:
                 status, kind = "Недостаточно данных", "warn"
+                action = "insufficient"
+            elif avg_cpa > 0 and obj_cpa <= avg_cpa * 0.80 and rc >= 5:
+                status, kind = "Потенциал усиления", ""
+                action = "strengthen"
+                row_actions.append((r, obj_cpa))
+            elif avg_cpa > 0 and obj_cpa >= avg_cpa * 1.25 and rc >= 3:
+                status, kind = "Оптимизировать", "warn"
+                action = "optimize"
+                row_actions.append((r, obj_cpa))
+            else:
+                status, kind = "Сопоставить с аналогами", "warn"
+                action = "compare"
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
-                "shows":integer(r["Показы"]),"views":integer(r["Просмотры"]),
-                "contacts":integer(r["Контакты"]),
+                "shows":integer(r["Показы"]),"views":integer(rv),
+                "contacts":integer(rc),
                 "rate":f'{r["Конверсия в контакт, %"]:.2f}%'.replace(".",","),
-                "spend":money(r["Расходы"]),
-                "cpa":money(obj_cpa) if r["Контакты"] else "—",
+                "spend":money(rs),
+                "cpa":money(obj_cpa) if rc else "—",
                 "status":status,"kind":kind})
 
         recommendations = []
         if views:
             recommendations.append({"kind":"", "label":"СВОДКА",
                 "title":f"Конверсия из просмотров в контакт — {contact_rate:.2f}%".replace(".",","),
-                "text":"Сравнивайте показатель между сопоставимыми категориями и периодами, а не с универсальной нормой."})
-        zero_contact = int(((df["Контакты"] == 0) & (df["Расходы"] > 0)).sum())
+                "text":"Это базовый ориентир по загруженным строкам. Сравнивайте только сопоставимые города, категории и периоды; средняя конверсия сама по себе не определяет успех."})
+
+        # Compare categories with minimum sample size. Aggregates are used for guidance,
+        # not as proof of profitability; orders/revenue are not present in this MVP logic.
+        eligible_cats = cat_df[(cat_df["Просмотры"] >= 100) & (cat_df["Контакты"] >= 3)].copy()
+        eligible_cats["cpa"] = eligible_cats["Расходы"] / eligible_cats["Контакты"].replace(0, pd.NA)
+        eligible_cats = eligible_cats.dropna(subset=["cpa"])
+        if not eligible_cats.empty:
+            best = eligible_cats.sort_values(["cpa", "Контакты"], ascending=[True, False]).iloc[0]
+            worst = eligible_cats.sort_values(["cpa", "Контакты"], ascending=[False, False]).iloc[0]
+            best_name = " · ".join([safe_text(best[c]) for c in group_cols if safe_text(best[c])]) or "Категория без названия"
+            worst_name = " · ".join([safe_text(worst[c]) for c in group_cols if safe_text(worst[c])]) or "Категория без названия"
+            if best_name == worst_name:
+                recommendations.append({"kind":"", "label":"СРАВНИТЬ",
+                    "title":f"{best_name}: {int(best['Контакты'])} контактов",
+                    "text":"Пока это единственная категория с достаточным объёмом данных для сравнения. Соберите ещё статистику, затем оцените динамику."})
+            else:
+                recommendations.append({"kind":"", "label":"ПОТЕНЦИАЛ УСИЛЕНИЯ",
+                    "title":f"{best_name} — {money(float(best['cpa']))} за контакт",
+                    "text":f"Категория дала {int(best['Контакты'])} контактов при {integer(best['Просмотры'])} просмотрах. Проверьте качество обращений и стабильность результата, прежде чем увеличивать бюджет."})
+                if float(worst["cpa"]) >= float(best["cpa"]) * 1.25:
+                    recommendations.append({"kind":"warn", "label":"ОПТИМИЗИРОВАТЬ",
+                        "title":f"Сравнить затраты в категории «{worst_name}»",
+                        "text":f"Стоимость контакта — {money(float(worst['cpa']))}, контактов — {int(worst['Контакты'])}. Проверьте цену, объявления и качество обращений; не сокращайте бюджет автоматически."})
+
+        zero_contact = int(((df["Контакты"] == 0) & (df["Расходы"] > 0) & (df["Просмотры"] >= 100)).sum())
         if zero_contact:
             recommendations.append({"kind":"bad","label":"ПРОВЕРИТЬ",
-                "title":f"{zero_contact} строк с расходами и нулём контактов",
-                "text":"Проверьте объём просмотров и период размещения. При малой выборке не отключайте объявления автоматически."})
-        if contacts:
-            recommendations.append({"kind":"", "label":"УСИЛИТЬ",
-                "title":"Сравнить объекты дешевле средней стоимости контакта",
-                "text":"Проверяйте не только стоимость, но и количество обращений и качество лидов перед перераспределением бюджета."})
+                "title":f"{zero_contact} строк с расходами, от 100 просмотров и без контактов",
+                "text":"Это приоритет для ручной проверки: оцените цену, фото, предложение и срок размещения. При этом не отключайте объект автоматически — выборка может быть недостаточной."})
+        low_sample = int(((df["Просмотры"] < 100) | (df["Контакты"] < 3)).sum())
+        if low_sample:
+            recommendations.append({"kind":"warn","label":"НЕДОСТАТОЧНО ДАННЫХ",
+                "title":f"{low_sample} строк требуют накопления статистики",
+                "text":"Не делайте вывод об эффективности по нескольким просмотрам или 1–2 контактам. Сначала наберите достаточный объём наблюдений."})
         if not recommendations:
             recommendations.append({"kind":"warn","label":"НЕДОСТАТОЧНО ДАННЫХ",
-                "title":"В выгрузке мало метрик для выводов",
-                "text":"Проверьте, что файл содержит просмотры, контакты и расходы."})
+                "title":"Пока недостаточно данных для рекомендаций",
+                "text":"Проверьте, что выгрузка содержит просмотры, контакты и расходы."})
+        # Keep the interface concise while preserving the most actionable observations.
+        recommendations = recommendations[:5]
 
         kpis = {"shows":integer(shows),"views":integer(views),"contacts":integer(contacts),
                 "spend":money(spend),"view_rate":f"{view_rate:.2f}%".replace(".",","),
