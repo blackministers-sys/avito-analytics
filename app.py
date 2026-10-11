@@ -1,336 +1,339 @@
-
+import io
 import os
-from flask import Flask, request, render_template_string
+import re
+from datetime import datetime
+
+import pandas as pd
+from flask import Flask, request, render_template_string, send_file
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
 
-AVITO_CLIENT_ID = os.environ.get("AVITO_CLIENT_ID")
-AVITO_CLIENT_SECRET = os.environ.get("AVITO_CLIENT_SECRET")
+# Avito Excel export columns. Column names are normalized to tolerate NBSPs.
+ALIASES = {
+    "Показы": ["Показы"],
+    "Просмотры": ["Просмотры"],
+    "Контакты": ["Контакты"],
+    "Избранное": ["Добавили в избранное"],
+    "Расходы": [
+        "Расходы на размещение и целевые действия",
+        "Расходы на объявления",
+        "Расходы на продвижение",
+        "Остальные расходы",
+    ],
+    "Средняя цена просмотра": ["Средняя цена просмотра"],
+    "Средняя цена контакта": ["Средняя цена контакта"],
+    "Цена": ["Цена"],
+    "Город": ["Город"],
+    "Регион": ["Регион размещения"],
+    "Категория": ["Категория"],
+    "Подкатегория": ["Подкатегория"],
+    "Параметр": ["Параметр"],
+    "Название объявления": ["Название объявления"],
+    "Номер объявления": ["Номер объявления"],
+    "Дней на Авито": ["Дней на Авито"],
+    "Показы в просмотры": ["Конверсия из показов в просмотры"],
+    "Просмотры в контакты": ["Конверсия из просмотров в контакты"],
+}
 
-HTML = r"""
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Avito Analytics</title>
+def clean_col(value):
+    return re.sub(r"\s+", " ", str(value).replace("\xa0", " ")).strip()
+
+def clean_frame(df):
+    df = df.copy()
+    df.columns = [clean_col(c) for c in df.columns]
+    return df
+
+def numeric(series):
+    if series is None:
+        return pd.Series(dtype=float)
+    return pd.to_numeric(
+        series.astype(str).str.replace("\xa0", "", regex=False)
+        .str.replace("₽", "", regex=False).str.replace("%", "", regex=False)
+        .str.replace(",", ".", regex=False).str.strip(),
+        errors="coerce"
+    ).fillna(0)
+
+def find_col(df, canonical):
+    wanted = [clean_col(x) for x in ALIASES.get(canonical, [canonical])]
+    for name in wanted:
+        if name in df.columns:
+            return name
+    return None
+
+def prepare_data(df):
+    df = clean_frame(df)
+    # The export may contain extra title/metadata rows; retain rows with a metric.
+    metric_col = find_col(df, "Просмотры")
+    if not metric_col:
+        raise ValueError("Не найден столбец «Просмотры». Загрузите стандартную выгрузку статистики Avito в Excel.")
+    df = df[df[metric_col].notna()].copy()
+    if df.empty:
+        raise ValueError("В файле не найдено строк со статистикой.")
+
+    for canonical in ["Показы", "Просмотры", "Контакты", "Избранное",
+                      "Средняя цена просмотра", "Средняя цена контакта",
+                      "Дней на Авито", "Показы в просмотры", "Просмотры в контакты"]:
+        col = find_col(df, canonical)
+        df[canonical] = numeric(df[col]) if col else 0
+
+    # Prefer total cost column. If unavailable, sum available cost components.
+    total_cost_col = find_col(df, "Расходы")
+    if total_cost_col:
+        df["Расходы"] = numeric(df[total_cost_col])
+    else:
+        df["Расходы"] = 0
+        for colname in ["Расходы на объявления", "Расходы на продвижение", "Остальные расходы"]:
+            col = clean_col(colname)
+            if col in df.columns:
+                df["Расходы"] += numeric(df[col])
+
+    for canonical in ["Город", "Регион", "Категория", "Подкатегория",
+                      "Параметр", "Название объявления", "Номер объявления", "Цена"]:
+        col = find_col(df, canonical)
+        df[canonical] = df[col].fillna("").astype(str).str.strip() if col else ""
+
+    # Derive rates from counts where possible; avoid trusting rounded source rates.
+    df["Конверсия в просмотр, %"] = (df["Просмотры"] / df["Показы"].replace(0, pd.NA) * 100).fillna(0)
+    df["Конверсия в контакт, %"] = (df["Контакты"] / df["Просмотры"].replace(0, pd.NA) * 100).fillna(0)
+    df["Стоимость контакта, ₽"] = (df["Расходы"] / df["Контакты"].replace(0, pd.NA)).fillna(0)
+    df["Стоимость просмотра, ₽"] = (df["Расходы"] / df["Просмотры"].replace(0, pd.NA)).fillna(0)
+    df["Объект"] = df.apply(make_label, axis=1)
+    return df
+
+def make_label(row):
+    for key in ["Название объявления", "Номер объявления"]:
+        val = str(row.get(key, "")).strip()
+        if val and val.lower() not in ["nan", "none"]:
+            return val
+    parts = [row.get("Город", ""), row.get("Категория", ""),
+             row.get("Подкатегория", ""), row.get("Параметр", ""), row.get("Цена", "")]
+    parts = [str(x).strip() for x in parts if str(x).strip() and str(x).lower() != "nan"]
+    return " · ".join(parts) or "Строка без названия"
+
+def rub(value):
+    return f"{value:,.2f} ₽".replace(",", " ").replace(".", ",")
+
+def integer(value):
+    return f"{int(round(value)):,}".replace(",", " ")
+
+def pct(value):
+    return f"{value:.2f}%".replace(".", ",")
+
+def aggregate(df, by):
+    result = df.groupby(by, dropna=False, as_index=False).agg(
+        Показы=("Показы", "sum"),
+        Просмотры=("Просмотры", "sum"),
+        Контакты=("Контакты", "sum"),
+        Избранное=("Избранное", "sum"),
+        Расходы=("Расходы", "sum"),
+    )
+    result["Конверсия в контакт, %"] = result["Контакты"] / result["Просмотры"].replace(0, pd.NA) * 100
+    result["Стоимость контакта, ₽"] = result["Расходы"] / result["Контакты"].replace(0, pd.NA)
+    return result.fillna(0)
+
+PAGE = r"""
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Avito Analytics — импорт статистики</title>
 <style>
-:root {
-  --bg:#0b1120; --panel:#121b2d; --line:#253249;
-  --text:#edf2fa; --muted:#93a4bd; --blue:#72a7ff;
-  --green:#43d6a0; --red:#ff7888; --yellow:#ffd078;
-}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);
-font:14px/1.5 Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-.wrap{max-width:1440px;margin:auto;padding:28px}
-header{display:flex;justify-content:space-between;align-items:center;
-gap:16px;margin-bottom:30px;flex-wrap:wrap}
-.brand{font-size:23px;font-weight:750;letter-spacing:-.6px}
-.brand span{color:var(--blue)}
-.sub{color:var(--muted);font-size:12px;margin-top:4px}
-.demo{border:1px solid #765b32;background:#302619;color:var(--yellow);
-padding:7px 12px;border-radius:8px;font-size:12px}
-h1{font-size:27px;letter-spacing:-.7px;margin:0}
-h2{font-size:16px;margin:0 0 18px}
-.intro{display:flex;justify-content:space-between;align-items:end;
-gap:16px;margin-bottom:22px;flex-wrap:wrap}
-.muted{color:var(--muted)}
-select,button{background:var(--panel);color:var(--text);
-border:1px solid var(--line);border-radius:8px;padding:10px 12px;font:inherit}
-button{cursor:pointer}
-.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
-.panel,.metric{background:var(--panel);border:1px solid var(--line);
-border-radius:14px;padding:20px;min-width:0}
-.metric-label{color:var(--muted);font-size:13px}
-.metric-value{font-size:29px;font-weight:750;letter-spacing:-.8px;margin:12px 0 5px}
-.change{font-size:12px}
-.good{color:var(--green)} .bad{color:var(--red)}
-.neutral{color:var(--muted)}
-.main-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,1fr);
-gap:15px;margin-top:15px}
-.chart-legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);
-font-size:12px;margin-bottom:14px}
-.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
-svg{width:100%;height:auto;display:block;overflow:visible}
-.recommendation{padding:13px 0;border-bottom:1px solid var(--line)}
-.recommendation:last-child{border:0;padding-bottom:0}
-.tag{display:inline-block;padding:3px 8px;border-radius:5px;
-font-size:11px;margin-bottom:7px}
-.tag.green{background:#163a35;color:var(--green)}
-.tag.red{background:#42232d;color:var(--red)}
-.tag.yellow{background:#42351f;color:var(--yellow)}
-.rec-title{font-weight:650;margin-bottom:4px}
-.rec-text{font-size:12px;color:var(--muted)}
-.table-panel{margin-top:15px}
-.table-head{display:flex;justify-content:space-between;align-items:center;
-gap:12px;margin-bottom:14px;flex-wrap:wrap}
-.table-wrap{overflow-x:auto}
-table{border-collapse:collapse;width:100%;white-space:nowrap}
-th{text-align:left;color:var(--muted);font-size:11px;font-weight:550;
-padding:12px;border-bottom:1px solid var(--line)}
-td{padding:14px 12px;border-bottom:1px solid var(--line)}
-tbody tr:last-child td{border-bottom:0}
-.status{font-size:11px;border-radius:5px;padding:4px 8px}
-.status.good{background:#163a35}
-.status.bad{background:#42232d}
-.status.mid{background:#42351f;color:var(--yellow)}
-.small{font-size:12px}
-footer{color:var(--muted);font-size:11px;margin:22px 0 4px}
-.empty{padding:22px 0;color:var(--muted)}
-@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-.main-grid{grid-template-columns:1fr}.wrap{padding:18px}}
-@media(max-width:480px){.wrap{padding:12px}.grid{gap:9px}
-.metric,.panel{padding:14px}.metric-value{font-size:23px}
-h1{font-size:23px}}
-</style>
-</head>
-<body>
-<div class="wrap">
-<header>
-  <div>
-    <div class="brand"><span>Avito</span> Analytics</div>
-    <div class="sub">Платформа аналитики и принятия решений</div>
-  </div>
-  <div class="demo">● ДЕМО · НЕ РЕАЛЬНЫЕ ДАННЫЕ</div>
-</header>
-
-<section class="intro">
-  <div>
-    <h1>Обзор кабинета</h1>
-    <div class="muted" style="margin-top:7px">
-      Анализ эффективности объявлений и продвижения
-    </div>
-  </div>
-  <select id="period" aria-label="Период анализа">
-    <option value="7">Последние 7 дней</option>
-    <option value="30" selected>Последние 30 дней</option>
-    <option value="90">Последние 90 дней</option>
-  </select>
-</section>
-
+:root{--bg:#0b1120;--panel:#121b2d;--line:#28364d;--text:#edf2fa;--muted:#9babc2;--blue:#82aaff;--green:#52d6a5;--red:#ff8491;--yellow:#ffd078}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 Inter,Arial,sans-serif}
+.wrap{max-width:1500px;margin:auto;padding:26px}.top{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;margin-bottom:25px}
+.brand{font-size:24px;font-weight:800}.brand span{color:var(--blue)}.muted{color:var(--muted)}h1{font-size:28px;margin:0 0 5px}h2{font-size:17px;margin:0 0 15px}
+.pill{border:1px solid #6c5734;color:var(--yellow);background:#302719;padding:7px 11px;border-radius:8px;font-size:12px}
+.panel,.metric{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;min-width:0}
+.upload{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap}.upload form{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input[type=file]{max-width:100%;color:var(--muted)}button{background:#3568ce;color:white;border:0;border-radius:8px;padding:11px 16px;font-weight:700;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:15px}
+.label{color:var(--muted);font-size:13px}.value{font-size:28px;font-weight:800;margin:10px 0 4px;letter-spacing:-.5px}
+.small{font-size:12px}.good{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--yellow)}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px}
+.tablebox{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:12px;border-bottom:1px solid var(--line)}td{padding:12px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border:0}
+.tag{font-size:11px;border-radius:5px;padding:4px 7px;background:#203c36;color:var(--green)}.tag.warn{background:#40351f;color:var(--yellow)}.tag.bad{background:#432630;color:var(--red)}
+.rec{padding:12px 0;border-bottom:1px solid var(--line)}.rec:last-child{border:0}.rec strong{display:block;margin:7px 0 4px}
+.error{background:#432630;color:#ffb5bd;border:1px solid #80404b;padding:12px;border-radius:8px;margin:14px 0}
+footer{margin-top:22px;color:var(--muted);font-size:11px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cols{grid-template-columns:1fr}.wrap{padding:14px}}
+@media(max-width:480px){.grid{gap:8px}.metric,.panel{padding:13px}.value{font-size:22px}}
+</style></head><body><div class="wrap">
+<header class="top"><div><div class="brand"><span>Avito</span> Analytics</div><div class="muted">Аналитика кабинета на основе выгрузки</div></div>
+<div class="pill">● {{ "РЕАЛЬНАЯ ВЫГРУЗКА" if has_data else "ОЖИДАЕТ ФАЙЛ" }}</div></header>
+<section class="panel upload"><div><h2>Загрузить статистику</h2><div class="muted small">Поддерживается Excel (.xlsx, .xls) до 20 МБ. Файл обрабатывается в памяти.</div></div>
+<form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><button type="submit">Анализировать</button></form></section>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if has_data %}
+<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период берётся из исходной выгрузки, если указан в ней</div></section>
 <section class="grid">
-  <div class="metric">
-    <div class="metric-label">Просмотры</div>
-    <div class="metric-value" id="views">12 480</div>
-    <div class="change good">↑ 14,2% <span class="neutral">к прошлому периоду</span></div>
-  </div>
-  <div class="metric">
-    <div class="metric-label">Контакты</div>
-    <div class="metric-value" id="contacts">386</div>
-    <div class="change good">↑ 9,6% <span class="neutral">к прошлому периоду</span></div>
-  </div>
-  <div class="metric">
-    <div class="metric-label">Расходы на продвижение</div>
-    <div class="metric-value" id="spend">48 200 ₽</div>
-    <div class="change neutral">За выбранный период</div>
-  </div>
-  <div class="metric">
-    <div class="metric-label">Стоимость контакта</div>
-    <div class="metric-value" id="cpc">124,87 ₽</div>
-    <div class="change neutral">Расходы ÷ контакты</div>
-  </div>
+<div class="metric"><div class="label">Показы</div><div class="value">{{ kpis.shows }}</div><div class="muted small">Всего по загруженным строкам</div></div>
+<div class="metric"><div class="label">Просмотры</div><div class="value">{{ kpis.views }}</div><div class="muted small">Конверсия из показов: {{ kpis.view_rate }}</div></div>
+<div class="metric"><div class="label">Контакты</div><div class="value">{{ kpis.contacts }}</div><div class="muted small">Конверсия в контакт: {{ kpis.contact_rate }}</div></div>
+<div class="metric"><div class="label">Расходы</div><div class="value">{{ kpis.spend }}</div><div class="muted small">Стоимость контакта: {{ kpis.cpa }}</div></div>
 </section>
-
-<section class="main-grid">
-  <div class="panel">
-    <h2>Динамика показателей</h2>
-    <div class="chart-legend">
-      <span><i class="dot" style="background:#72a7ff"></i>Просмотры</span>
-      <span><i class="dot" style="background:#43d6a0"></i>Контакты</span>
-    </div>
-    <svg viewBox="0 0 620 230" role="img" aria-label="Демонстрационный график динамики">
-      <g stroke="#253249" stroke-width="1">
-        <line x1="42" y1="25" x2="600" y2="25"/>
-        <line x1="42" y1="70" x2="600" y2="70"/>
-        <line x1="42" y1="115" x2="600" y2="115"/>
-        <line x1="42" y1="160" x2="600" y2="160"/>
-        <line x1="42" y1="195" x2="600" y2="195"/>
-      </g>
-      <g fill="#93a4bd" font-size="10">
-        <text x="4" y="29">100%</text><text x="10" y="74">75%</text>
-        <text x="10" y="119">50%</text><text x="10" y="164">25%</text>
-        <text x="42" y="215">1</text><text x="220" y="215">7</text>
-        <text x="400" y="215">14</text><text x="580" y="215">30</text>
-      </g>
-      <polyline id="viewsLine" fill="none" stroke="#72a7ff" stroke-width="3"
-        stroke-linecap="round" stroke-linejoin="round"
-        points="42,150 110,130 180,145 250,95 320,110 390,72 460,90 530,48 590,58"/>
-      <polyline id="contactsLine" fill="none" stroke="#43d6a0" stroke-width="3"
-        stroke-linecap="round" stroke-linejoin="round"
-        points="42,180 110,168 180,174 250,155 320,163 390,143 460,150 530,125 590,132"/>
-    </svg>
-    <div class="muted small">Иллюстративные значения. График пока не связан с API.</div>
-  </div>
-
-  <div class="panel">
-    <h2>Рекомендации системы</h2>
-    <div class="recommendation">
-      <span class="tag green">УСИЛИТЬ</span>
-      <div class="rec-title">Найти объявления-лидеры</div>
-      <div class="rec-text">Сравнить стоимость контакта и объём обращений. Масштабировать только после проверки стабильности результата.</div>
-    </div>
-    <div class="recommendation">
-      <span class="tag yellow">ОПТИМИЗИРОВАТЬ</span>
-      <div class="rec-title">Проверить конверсию</div>
-      <div class="rec-text">Найти объявления с просмотрами, но низкой долей контактов. Проверить цену, фото и предложение.</div>
-    </div>
-    <div class="recommendation">
-      <span class="tag red">КОНТРОЛЬ</span>
-      <div class="rec-title">Проверить расходы</div>
-      <div class="rec-text">Сопоставить расходы с обращениями по каждому объявлению, прежде чем менять бюджет.</div>
-    </div>
-  </div>
-</section>
-
-<section class="panel table-panel">
-  <div class="table-head">
-    <h2 style="margin:0">Эффективность объявлений</h2>
-    <select id="filter" aria-label="Фильтр объявлений">
-      <option value="all">Все объявления</option>
-      <option value="good">Эффективные</option>
-      <option value="bad">Требуют внимания</option>
-    </select>
-  </div>
-  <div class="table-wrap">
-    <table>
-      <thead><tr>
-        <th>ОБЪЯВЛЕНИЕ</th><th>ПРОСМОТРЫ</th><th>КОНТАКТЫ</th>
-        <th>РАСХОДЫ</th><th>₽ / КОНТАКТ</th><th>ОЦЕНКА</th>
-      </tr></thead>
-      <tbody id="ads"></tbody>
-    </table>
-  </div>
-  <div class="muted small" style="margin-top:12px">
-    Пример данных для проверки интерфейса. Оценки не являются реальными рекомендациями.
-  </div>
-</section>
-
-<footer>
-  Avito Analytics · Демонстрационный прототип · Реальные данные будут доступны после настройки интеграции.
-</footer>
+<section class="cols">
+<div class="panel"><h2>Автоматические наблюдения</h2>
+{% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div>
-
-<script>
-const base = [
- {name:"Объявление №1 · Категория A",views:3240,contacts:112,spend:9800},
- {name:"Объявление №2 · Категория B",views:2180,contacts:76,spend:7200},
- {name:"Объявление №3 · Категория A",views:1840,contacts:19,spend:8100},
- {name:"Объявление №4 · Категория C",views:1260,contacts:8,spend:5600},
- {name:"Объявление №5 · Категория B",views:3960,contacts:171,spend:17500}
-];
-
-const fmt = n => Math.round(n).toLocaleString("ru-RU");
-const rub = n => n.toLocaleString("ru-RU",{maximumFractionDigits:2})+" ₽";
-
-function render() {
-  const period = Number(document.getElementById("period").value);
-  const filter = document.getElementById("filter").value;
-  const factor = period / 30;
-  const rows = base.map(a => ({
-    ...a,
-    views:Math.round(a.views*factor),
-    contacts:Math.round(a.contacts*factor),
-    spend:Math.round(a.spend*factor)
-  })).map(a => ({
-    ...a,
-    cost:a.contacts ? a.spend/a.contacts : null,
-    rate:a.views ? a.contacts/a.views*100 : 0
-  }));
-
-  const views = rows.reduce((s,a)=>s+a.views,0);
-  const contacts = rows.reduce((s,a)=>s+a.contacts,0);
-  const spend = rows.reduce((s,a)=>s+a.spend,0);
-
-  document.getElementById("views").textContent=fmt(views);
-  document.getElementById("contacts").textContent=fmt(contacts);
-  document.getElementById("spend").textContent=rub(spend);
-  document.getElementById("cpc").textContent=contacts?rub(spend/contacts):"—";
-
-  const tbody = document.getElementById("ads");
-  tbody.replaceChildren();
-
-  rows.forEach(a=>{
-    const good = a.cost !== null && a.cost <= spend/Math.max(contacts,1);
-    if(filter==="good" && !good) return;
-    if(filter==="bad" && good) return;
-
-    const tr=document.createElement("tr");
-    const values=[
-      a.name,fmt(a.views),fmt(a.contacts),rub(a.spend),
-      a.cost===null?"Нет контактов":rub(a.cost)
-    ];
-    values.forEach((value,i)=>{
-      const td=document.createElement("td");
-      td.textContent=value;
-      if(i===0) td.style.fontWeight="600";
-      tr.appendChild(td);
-    });
-    const status=document.createElement("td");
-    const badge=document.createElement("span");
-    badge.className="status "+(good?"good":"bad");
-    badge.textContent=good?"Ниже средней стоимости":"Выше средней стоимости";
-    status.appendChild(badge);
-    tr.appendChild(status);
-    tbody.appendChild(tr);
-  });
-
-  if(!tbody.children.length){
-    const tr=document.createElement("tr");
-    const td=document.createElement("td");
-    td.colSpan=6;
-    td.className="empty";
-    td.textContent="Нет объявлений для выбранного фильтра.";
-    tr.appendChild(td);
-    tbody.appendChild(tr);
-  }
-}
-
-document.getElementById("period").addEventListener("change",render);
-document.getElementById("filter").addEventListener("change",render);
-render();
-</script>
-</body>
-</html>
+<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
+{% for r in cities %}<tr><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+</tbody></table></div></div>
+</section>
+<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
+{% for r in categories %}<tr><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+</tbody></table></div></section>
+<section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, объект обозначается городом, категорией, параметром и ценой.</div>
+<div class="tablebox"><table><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th></tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
+</tbody></table></div></section>
+{% else %}
+<section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
+{% endif %}
+<footer>Avito Analytics · MVP · Аналитические оценки предварительные и не заменяют проверку бизнес-контекста.</footer>
+</div></body></html>
 """
 
+LAST_EXPORT = None
 
-@app.route("/")
+def money(v):
+    return f"{v:,.0f} ₽".replace(",", " ")
+
+def safe_text(v):
+    v = str(v).strip()
+    return "" if v.lower() in ("nan", "none") else v
+
+@app.get("/")
 def home():
-    return render_template_string(HTML)
+    return render_template_string(PAGE, has_data=False, error=None)
 
+@app.post("/analyze")
+def analyze():
+    global LAST_EXPORT
+    file = request.files.get("file")
+    if not file or not file.filename:
+        return render_template_string(PAGE, has_data=False, error="Выберите файл.")
+    name = file.filename.lower()
+    try:
+        raw = file.read()
+        if name.endswith(".csv"):
+            try:
+                source = pd.read_csv(io.BytesIO(raw), sep=None, engine="python", encoding="utf-8-sig")
+            except UnicodeDecodeError:
+                source = pd.read_csv(io.BytesIO(raw), sep=None, engine="python", encoding="cp1251")
+        elif name.endswith((".xlsx", ".xls")):
+            source = pd.read_excel(io.BytesIO(raw))
+        else:
+            raise ValueError("Поддерживаются файлы .xlsx, .xls и .csv.")
+        df = prepare_data(source)
+        LAST_EXPORT = df.copy()
 
-@app.route("/health")
+        shows = df["Показы"].sum()
+        views = df["Просмотры"].sum()
+        contacts = df["Контакты"].sum()
+        spend = df["Расходы"].sum()
+        view_rate = views / shows * 100 if shows else 0
+        contact_rate = contacts / views * 100 if views else 0
+        cpa = spend / contacts if contacts else 0
+
+        # City and category aggregations are summaries of rows in the export.
+        # Warn in the UI that totals need a check if export contains overlapping cuts.
+        city_col = df["Город"].replace("", "Не указан")
+        city_df = df.assign(_city=city_col).groupby("_city", as_index=False).agg(
+            Просмотры=("Просмотры", "sum"), Контакты=("Контакты", "sum"), Расходы=("Расходы", "sum"))
+        city_df["cpa"] = city_df["Расходы"] / city_df["Контакты"].replace(0, pd.NA)
+        city_df = city_df.fillna(0).sort_values(["Контакты", "Просмотры"], ascending=False).head(10)
+        cities = [{"name":safe_text(r["_city"]), "views":integer(r["Просмотры"]),
+                   "contacts":integer(r["Контакты"]), "cpa":money(r["cpa"]) if r["Контакты"] else "—"}
+                  for _, r in city_df.iterrows()]
+
+        group_cols = ["Категория", "Подкатегория", "Параметр"]
+        cat_df = df.groupby(group_cols, dropna=False, as_index=False).agg(
+            Показы=("Показы","sum"), Просмотры=("Просмотры","sum"),
+            Контакты=("Контакты","sum"), Расходы=("Расходы","sum"))
+        cat_df["rate"] = cat_df["Контакты"] / cat_df["Просмотры"].replace(0, pd.NA) * 100
+        cat_df["cpa"] = cat_df["Расходы"] / cat_df["Контакты"].replace(0, pd.NA)
+        cat_df = cat_df.fillna(0).sort_values(["Контакты","Просмотры"], ascending=False).head(20)
+        categories = []
+        for _, r in cat_df.iterrows():
+            label = " · ".join([safe_text(r[c]) for c in group_cols if safe_text(r[c])])
+            categories.append({"name":label or "Не указано","shows":integer(r["Показы"]),
+                "views":integer(r["Просмотры"]),"contacts":integer(r["Контакты"]),
+                "rate":f'{r["rate"]:.2f}%'.replace(".",","),
+                "spend":money(r["Расходы"]),"cpa":money(r["cpa"]) if r["Контакты"] else "—"})
+
+        avg_cpa = cpa
+        rows = []
+        for _, r in df.iterrows():
+            obj_cpa = r["Стоимость контакта, ₽"]
+            if r["Контакты"] == 0 and r["Расходы"] > 0:
+                status, kind = "Расходы без контактов", "bad"
+            elif r["Контакты"] > 0 and avg_cpa > 0 and obj_cpa <= avg_cpa:
+                status, kind = "Ниже средней стоимости", ""
+            elif r["Контакты"] > 0:
+                status, kind = "Выше средней стоимости", "warn"
+            else:
+                status, kind = "Недостаточно данных", "warn"
+            rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
+                "shows":integer(r["Показы"]),"views":integer(r["Просмотры"]),
+                "contacts":integer(r["Контакты"]),
+                "rate":f'{r["Конверсия в контакт, %"]:.2f}%'.replace(".",","),
+                "spend":money(r["Расходы"]),
+                "cpa":money(obj_cpa) if r["Контакты"] else "—",
+                "status":status,"kind":kind})
+
+        recommendations = []
+        if views:
+            recommendations.append({"kind":"", "label":"СВОДКА",
+                "title":f"Конверсия из просмотров в контакт — {contact_rate:.2f}%".replace(".",","),
+                "text":"Сравнивайте показатель между сопоставимыми категориями и периодами, а не с универсальной нормой."})
+        zero_contact = int(((df["Контакты"] == 0) & (df["Расходы"] > 0)).sum())
+        if zero_contact:
+            recommendations.append({"kind":"bad","label":"ПРОВЕРИТЬ",
+                "title":f"{zero_contact} строк с расходами и нулём контактов",
+                "text":"Проверьте объём просмотров и период размещения. При малой выборке не отключайте объявления автоматически."})
+        if contacts:
+            recommendations.append({"kind":"", "label":"УСИЛИТЬ",
+                "title":"Сравнить объекты дешевле средней стоимости контакта",
+                "text":"Проверяйте не только стоимость, но и количество обращений и качество лидов перед перераспределением бюджета."})
+        if not recommendations:
+            recommendations.append({"kind":"warn","label":"НЕДОСТАТОЧНО ДАННЫХ",
+                "title":"В выгрузке мало метрик для выводов",
+                "text":"Проверьте, что файл содержит просмотры, контакты и расходы."})
+
+        kpis = {"shows":integer(shows),"views":integer(views),"contacts":integer(contacts),
+                "spend":money(spend),"view_rate":f"{view_rate:.2f}%".replace(".",","),
+                "contact_rate":f"{contact_rate:.2f}%".replace(".",","),
+                "cpa":money(cpa) if contacts else "—"}
+        return render_template_string(PAGE, has_data=True, error=None, kpis=kpis,
+            row_count=len(df), recommendations=recommendations, cities=cities,
+            categories=categories, rows=rows)
+    except Exception as exc:
+        return render_template_string(PAGE, has_data=False,
+            error=f"Не удалось обработать файл: {str(exc)}"), 400
+
+@app.get("/download")
+def download():
+    global LAST_EXPORT
+    if LAST_EXPORT is None:
+        return "Сначала загрузите и проанализируйте файл.", 400
+    buf = io.StringIO()
+    LAST_EXPORT.to_csv(buf, index=False, encoding="utf-8-sig")
+    data = io.BytesIO(buf.getvalue().encode("utf-8-sig"))
+    return send_file(data, mimetype="text/csv", as_attachment=True,
+                     download_name="avito_analytics_results.csv")
+
+@app.get("/health")
 def health():
-    return {"status": "ok", "app": "Avito Analytics"}, 200
+    return {"status":"ok","app":"Avito Analytics"}, 200
 
-
-@app.route("/callback")
+@app.get("/callback")
 def callback():
-    code = request.args.get("code")
     error = request.args.get("error")
-
+    code = request.args.get("code")
     if error:
-        return (
-            "<h1>Ошибка авторизации</h1>"
-            "<p>Avito вернул ошибку авторизации.</p>"
-        ), 400
-
+        return "<h1>Ошибка авторизации</h1><p>Avito вернул ошибку авторизации.</p>", 400
     if code:
-        # Код получен, но обмен на токен пока не реализован.
-        # Не сохраняем и не показываем код авторизации.
-        return """
-        <h1>Avito Analytics</h1>
-        <p>Код авторизации получен.</p>
-        <p>Обмен кода на токен ещё не настроен.</p>
-        """, 200
-
-    return """
-    <h1>Avito Analytics</h1>
-    <p>Callback работает. Код авторизации не передан.</p>
-    """, 200
-
+        return "<h1>Avito Analytics</h1><p>Код авторизации получен. Обмен на токен ещё не реализован.</p>", 200
+    return "<h1>Avito Analytics</h1><p>Callback работает. Код авторизации не передан.</p>", 200
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "8000"))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
