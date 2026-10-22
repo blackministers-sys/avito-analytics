@@ -184,14 +184,16 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </section>
 <section class="cols">
 <div class="panel"><h2>Автоматические наблюдения</h2>
+<div id="recommendationScopeNotice" class="muted small" hidden>Включены фильтры. Наблюдения ниже рассчитаны по всей выгрузке, поэтому скрыты, чтобы не смешивать выборки.</div>
+<div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
-</div>
+</div></div>
 <div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in cities %}<tr><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
 <section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in categories %}<tr><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+{% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
 <section class="panel" style="margin-top:15px">
 <h2>Фильтры и сортировка</h2>
@@ -237,6 +239,11 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
    if(map[key]) shown.sort((a,b)=> (key==='cpaDesc'?-1:1)*(n(a,map[key])-n(b,map[key])));
    else shown.sort((a,b)=>original.get(a)-original.get(b));
    rows.forEach(r=>r.hidden=true); shown.forEach(r=>{r.hidden=false;body.appendChild(r);});
+   document.querySelectorAll('.city-summary-row').forEach(r=>{r.hidden=!!citySelect.value&&r.dataset.city!==citySelect.value;});
+   document.querySelectorAll('.category-summary-row').forEach(r=>{r.hidden=!!categorySelect.value&&!r.dataset.category.includes(categorySelect.value);});
+   const scoped=!!(citySelect.value||categorySelect.value||statusSelect.value||contactsSelect.value);
+   document.getElementById('recommendationsList').hidden=scoped;
+   document.getElementById('recommendationScopeNotice').hidden=!scoped;
    count.textContent='Показано объявлений: '+shown.length+' из '+rows.length;
    const sums=shown.reduce((a,r)=>{a.shows+=n(r,'shows');a.views+=n(r,'views');a.contacts+=n(r,'contacts');a.spend+=n(r,'spend');return a;},{shows:0,views:0,contacts:0,spend:0});
    const metrics=Array.from(document.querySelectorAll('.metric'));
