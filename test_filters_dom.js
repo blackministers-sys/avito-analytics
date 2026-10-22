@@ -32,6 +32,7 @@ const dom = new JSDOM(html, { runScripts: 'outside-only' });
 const { document, Event } = dom.window;
 dom.window.eval(match[1]);
 const city = document.getElementById('filterCity');
+const category = document.getElementById('filterCategory');
 const contacts = document.getElementById('filterContacts');
 const sort = document.getElementById('sortBy');
 const count = document.getElementById('filterCount');
@@ -43,6 +44,14 @@ assert.deepStrictEqual(visibleNames(), ['A', 'B', 'C']);
 assert.strictEqual(count.textContent, 'Показано объявлений: 3 из 3');
 assert.strictEqual(metric(0), '600');
 assert.strictEqual(metric(2), '8');
+
+// Category filter uses the main Avito category, while the summary retains detailed grouping.
+category.value = 'Авто';
+category.dispatchEvent(new Event('change'));
+assert.deepStrictEqual(visibleNames(), ['A', 'B']);
+assert.strictEqual(count.textContent, 'Показано объявлений: 2 из 3');
+assert.strictEqual(document.querySelectorAll('#categorySummaryTable tbody tr').length, 2);
+document.getElementById('resetFilters').click();
 
 // City filter narrows listing rows and rebuilds summary groups and KPIs.
 city.value = 'Омск';
