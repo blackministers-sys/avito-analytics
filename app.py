@@ -238,8 +238,9 @@ def analyze():
             source = pd.read_excel(io.BytesIO(raw))
         else:
             raise ValueError("Поддерживаются файлы .xlsx, .xls и .csv.")
-        # Validate the original export before normalization/aggregation.
-        raw_headers = [clean_col(col) for col in source.columns]
+        # Normalize headers before validation and alias matching. Avito exports may
+        # use non-breaking spaces, which otherwise cause metric columns to be missed.
+        source = clean_frame(source)
         metric_columns = {}
         for canonical in ["Показы", "Просмотры", "Контакты", "Расходы"]:
             actual = find_col(source, canonical)
