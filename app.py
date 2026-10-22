@@ -207,8 +207,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </div><div class="muted small" id="filterCount" style="margin-top:10px"></div>
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, объект обозначается городом, категорией, параметром и ценой.</div>
-<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th><th>Что делать</th></tr></thead><tbody>
-{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td class="muted small"><details><summary>Показать рекомендацию</summary><div>{{ r.next_step }}</div></details></td></tr>{% endfor %}
+<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Приоритет</th><th>Оценка</th><th>Что делать</th></tr></thead><tbody>
+{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td class="muted small"><details><summary>Показать рекомендацию</summary><div>{{ r.next_step }}</div></details></td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
@@ -387,6 +387,8 @@ def analyze():
         # materially different economics. Require at least three other eligible listings.
         eligible_peers = df[(df["Просмотры"] >= 100) & (df["Контакты"] >= 3)].copy()
         eligible_peers["_peer_cpa"] = eligible_peers["Расходы"] / eligible_peers["Контакты"]
+        positive_spend = df.loc[df["Расходы"] > 0, "Расходы"]
+        median_spend = float(positive_spend.median()) if not positive_spend.empty else 0.0
         rows = []
         row_actions = []
         for idx, r in df.iterrows():
@@ -436,6 +438,14 @@ def analyze():
                 next_step = f"Стоимость контакта близка к медиане аналогов {benchmark_scope}; продолжайте наблюдение и сравните качество обращений."
             if benchmark_cpa > 0 and action not in ("check", "insufficient"):
                 next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {len(peers)}."
+            if rc == 0 and rs > 0 and rv >= 100:
+                priority, priority_kind = "Высокий", "bad"
+            elif action == "optimize" and rs >= median_spend and median_spend > 0:
+                priority, priority_kind = "Высокий", "bad"
+            elif rs > 0 and (action in ("check", "optimize") or rv < 100 or rc < 3):
+                priority, priority_kind = "Средний", "warn"
+            else:
+                priority, priority_kind = "Низкий", ""
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
                 "category": safe_text(r["Категория"]) or "Не указано",
                 "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
@@ -447,7 +457,7 @@ def analyze():
                 "raw_shows":float(r["Показы"]), "raw_views":rv, "raw_contacts":rc,
                 "raw_rate":float(r["Конверсия в контакт, %"]), "raw_spend":rs,
                 "raw_cpa":obj_cpa if rc else 1e30,
-                "status":status,"kind":kind,"next_step":next_step})
+                "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"next_step":next_step})
 
         recommendations = []
         if views:
