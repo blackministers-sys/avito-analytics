@@ -434,6 +434,8 @@ def analyze():
                 status, kind = "Сопоставить с аналогами", "warn"
                 action = "compare"
                 next_step = f"Стоимость контакта близка к медиане аналогов {benchmark_scope}; продолжайте наблюдение и сравните качество обращений."
+            if benchmark_cpa > 0 and action not in ("check", "insufficient"):
+                next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {len(peers)}."
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
                 "category": safe_text(r["Категория"]) or "Не указано",
                 "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
