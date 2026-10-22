@@ -207,8 +207,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </div><div class="muted small" id="filterCount" style="margin-top:10px"></div>
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, объект обозначается городом, категорией, параметром и ценой.</div>
-<div class="tablebox"><table><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th></tr></thead><tbody>
-{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
+<div class="tablebox"><table><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th><th>Что делать</th></tr></thead><tbody>
+{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td class="muted small">{{ r.next_step }}</td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
@@ -395,20 +395,25 @@ def analyze():
             if rc == 0 and rs > 0 and rv >= 100:
                 status, kind = "Проверить расходы", "bad"
                 action = "check"
+                next_step = "Проверить фото, цену, описание и качество трафика; не отключать автоматически."
             elif rv < 100 or rc < 3:
                 status, kind = "Недостаточно данных", "warn"
                 action = "insufficient"
+                next_step = "Накопить статистику; пока не менять бюджет только по этим данным."
             elif avg_cpa > 0 and obj_cpa <= avg_cpa * 0.80 and rc >= 5:
                 status, kind = "Потенциал усиления", ""
                 action = "strengthen"
+                next_step = "Проверить качество контактов и стабильность результата; затем тестировать небольшое увеличение бюджета."
                 row_actions.append((r, obj_cpa))
             elif avg_cpa > 0 and obj_cpa >= avg_cpa * 1.25 and rc >= 3:
                 status, kind = "Оптимизировать", "warn"
                 action = "optimize"
+                next_step = "Сравнить с похожими объявлениями и проверить цену, фото и предложение до сокращения бюджета."
                 row_actions.append((r, obj_cpa))
             else:
                 status, kind = "Сопоставить с аналогами", "warn"
                 action = "compare"
+                next_step = "Сравнить с объявлениями той же категории и города при сопоставимом объёме просмотров."
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
                 "category": safe_text(r["Категория"]) or "Не указано",
                 "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
@@ -420,7 +425,7 @@ def analyze():
                 "raw_shows":float(r["Показы"]), "raw_views":rv, "raw_contacts":rc,
                 "raw_rate":float(r["Конверсия в контакт, %"]), "raw_spend":rs,
                 "raw_cpa":obj_cpa if rc else 1e30,
-                "status":status,"kind":kind})
+                "status":status,"kind":kind,"next_step":next_step})
 
         recommendations = []
         if views:
