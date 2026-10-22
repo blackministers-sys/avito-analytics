@@ -4,6 +4,8 @@ import re
 from datetime import datetime
 
 import pandas as pd
+from data_validation import validate_export
+from excel_import import read_excel_preserving_hyperlinks
 from flask import Flask, request, render_template_string, send_file
 
 app = Flask(__name__)
@@ -164,6 +166,16 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if has_data %}
 <section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период берётся из исходной выгрузки, если указан в ней</div></section>
+{% if validation_report %}
+<section class="panel" style="margin-top:15px;border-color:{{ '#80404b' if validation_report.status == 'needs_review' else '#6c5734' }}">
+<h2>Проверка качества данных: {{ validation_report.status_label }}</h2>
+<p class="muted">{{ validation_report.summary }}</p>
+<div class="muted small">Проверено строк: {{ validation_report.row_count }} · Полные дубли: {{ validation_report.duplicate_rows }} · Возможные строки итогов: {{ validation_report.possible_summary_rows }}</div>
+{% if validation_report.warnings %}
+<ul>{% for warning in validation_report.warnings %}<li style="margin:6px 0">{{ warning }}</li>{% endfor %}</ul>
+{% else %}<p class="good small">Базовые проверки не выявили явных проблем. Это не гарантирует отсутствие пересекающихся срезов.</p>{% endif %}
+</section>
+{% endif %}
 <section class="grid">
 <div class="metric"><div class="label">Показы</div><div class="value">{{ kpis.shows }}</div><div class="muted small">Всего по загруженным строкам</div></div>
 <div class="metric"><div class="label">Просмотры</div><div class="value">{{ kpis.views }}</div><div class="muted small">Конверсия из показов: {{ kpis.view_rate }}</div></div>
@@ -212,6 +224,7 @@ def analyze():
     if not file or not file.filename:
         return render_template_string(PAGE, has_data=False, error="Выберите файл.")
     name = file.filename.lower()
+    validation_report = None
     try:
         raw = file.read()
         if name.endswith(".csv"):
@@ -219,10 +232,30 @@ def analyze():
                 source = pd.read_csv(io.BytesIO(raw), sep=None, engine="python", encoding="utf-8-sig")
             except UnicodeDecodeError:
                 source = pd.read_csv(io.BytesIO(raw), sep=None, engine="python", encoding="cp1251")
-        elif name.endswith((".xlsx", ".xls")):
+        elif name.endswith(".xlsx"):
+            source = read_excel_preserving_hyperlinks(raw)
+        elif name.endswith(".xls"):
             source = pd.read_excel(io.BytesIO(raw))
         else:
             raise ValueError("Поддерживаются файлы .xlsx, .xls и .csv.")
+        # Normalize headers before validation and alias matching. Avito exports may
+        # use non-breaking spaces, which otherwise cause metric columns to be missed.
+        source = clean_frame(source)
+        metric_columns = {}
+        for canonical in ["Показы", "Просмотры", "Контакты", "Расходы"]:
+            actual = find_col(source, canonical)
+            if actual:
+                metric_columns[canonical] = actual
+        identity_columns = []
+        for canonical in ["Номер объявления", "Название объявления"]:
+            actual = find_col(source, canonical)
+            if actual:
+                identity_columns.append(actual)
+        validation_report = validate_export(
+            source,
+            metric_columns=metric_columns,
+            identity_columns=identity_columns,
+        )
         df = prepare_data(source)
         LAST_EXPORT = df.copy()
 
@@ -345,7 +378,7 @@ def analyze():
                 "contact_rate":f"{contact_rate:.2f}%".replace(".",","),
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis,
-            row_count=len(df), recommendations=recommendations, cities=cities,
+            validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
             categories=categories, rows=rows)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
