@@ -61,7 +61,7 @@ assert.strictEqual(count.textContent, 'Показано объявлений: 2 
 assert.strictEqual(metric(0), '400');
 assert.strictEqual(metric(2), '8');
 assert.deepStrictEqual([...document.querySelectorAll('#citySummaryTable tbody tr')].map(r => r.dataset.city), ['Омск']);
-assert.deepStrictEqual([...document.querySelectorAll('#categorySummaryTable tbody tr')].map(r => r.dataset.summarycategory).sort(), ['Авто · Запчасти · A', 'Запчасти · Кузов · C']);
+assert.deepStrictEqual([...document.querySelectorAll('#categorySummaryTable tbody tr')].map(r => r.dataset.summaryCategory).sort(), ['Авто · Запчасти · A', 'Запчасти · Кузов · C']);
 assert.strictEqual(document.getElementById('recommendationsList').hidden, true);
 assert.strictEqual(document.getElementById('recommendationScopeNotice').hidden, false);
 
