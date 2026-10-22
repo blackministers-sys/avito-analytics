@@ -239,8 +239,35 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
    if(map[key]) shown.sort((a,b)=> (key==='cpaDesc'?-1:1)*(n(a,map[key])-n(b,map[key])));
    else shown.sort((a,b)=>original.get(a)-original.get(b));
    rows.forEach(r=>r.hidden=true); shown.forEach(r=>{r.hidden=false;body.appendChild(r);});
-   document.querySelectorAll('.city-summary-row').forEach(r=>{r.hidden=!!citySelect.value&&r.dataset.city!==citySelect.value;});
-   document.querySelectorAll('.category-summary-row').forEach(r=>{r.hidden=!!categorySelect.value&&!r.dataset.category.includes(categorySelect.value);});
+   // Rebuild summary tables from the exact filtered listing set, not from the full export.
+   function renderSummary(selector, key, type){
+     const summaryBody=document.querySelector(selector)?.closest('table')?.querySelector('tbody');
+     if(!summaryBody) return;
+     const groups=new Map();
+     shown.forEach(r=>{
+       const name=(r.dataset[key]||'').trim()||'Не указано';
+       if(!groups.has(name)) groups.set(name,{name,shows:0,views:0,contacts:0,spend:0});
+       const g=groups.get(name);
+       g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend');
+     });
+     const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
+     summaryBody.replaceChildren();
+     sorted.forEach(g=>{
+       const tr=document.createElement('tr');
+       tr.className=type==='city'?'city-summary-row':'category-summary-row';
+       tr.dataset[key]=g.name;
+       const cpa=g.contacts?Math.round(g.spend/g.contacts).toLocaleString('ru-RU')+' ₽':'—';
+       if(type==='city'){
+         [g.name,Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+       } else {
+         const rate=g.views?g.contacts/g.views*100:0;
+         [g.name,Math.round(g.shows).toLocaleString('ru-RU'),Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',Math.round(g.spend).toLocaleString('ru-RU')+' ₽',cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+       }
+       summaryBody.appendChild(tr);
+     });
+   }
+   renderSummary('.city-summary-row','city','city');
+   renderSummary('.category-summary-row','category','category');
    const scoped=!!(citySelect.value||categorySelect.value||statusSelect.value||contactsSelect.value);
    document.getElementById('recommendationsList').hidden=scoped;
    document.getElementById('recommendationScopeNotice').hidden=!scoped;
