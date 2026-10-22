@@ -236,7 +236,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
    let shown=rows.filter(r=>(!citySelect.value||r.dataset.city===citySelect.value)&&(!categorySelect.value||r.dataset.category===categorySelect.value)&&(!statusSelect.value||r.dataset.status===statusSelect.value)&&(!contactsSelect.value||(contactsSelect.value==='yes'?n(r,'contacts')>0:n(r,'contacts')===0)));
    const key=sortSelect.value;
    const map={shows:'shows',views:'views',contacts:'contacts',rate:'rate',spend:'spend',cpaAsc:'cpa',cpaDesc:'cpa'};
-   if(map[key]) shown.sort((a,b)=> (key==='cpaDesc'?-1:1)*(n(a,map[key])-n(b,map[key])));
+   if(map[key]) shown.sort((a,b)=> (key==='cpaAsc'?1:-1)*(n(a,map[key])-n(b,map[key])));
    else shown.sort((a,b)=>original.get(a)-original.get(b));
    rows.forEach(r=>r.hidden=true); shown.forEach(r=>{r.hidden=false;body.appendChild(r);});
    // Rebuild summary tables from the exact filtered listing set, not from the full export.
