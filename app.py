@@ -188,11 +188,11 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
-<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
+<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
 {% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
-<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
+<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
 {% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
 <section class="panel" style="margin-top:15px">
@@ -240,8 +240,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
    else shown.sort((a,b)=>original.get(a)-original.get(b));
    rows.forEach(r=>r.hidden=true); shown.forEach(r=>{r.hidden=false;body.appendChild(r);});
    // Rebuild summary tables from the exact filtered listing set, not from the full export.
-   function renderSummary(selector, key, type){
-     const summaryBody=document.querySelector(selector)?.closest('table')?.querySelector('tbody');
+   function renderSummary(tableSelector, key, type){
+     const summaryBody=document.querySelector(tableSelector)?.querySelector('tbody');
      if(!summaryBody) return;
      const groups=new Map();
      shown.forEach(r=>{
@@ -266,8 +266,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
        summaryBody.appendChild(tr);
      });
    }
-   renderSummary('.city-summary-row','city','city');
-   renderSummary('.category-summary-row','category','category');
+   renderSummary('#citySummaryTable','city','city');
+   renderSummary('#categorySummaryTable','category','category');
    const scoped=!!(citySelect.value||categorySelect.value||statusSelect.value||contactsSelect.value);
    document.getElementById('recommendationsList').hidden=scoped;
    document.getElementById('recommendationScopeNotice').hidden=!scoped;
