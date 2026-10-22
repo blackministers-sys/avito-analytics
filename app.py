@@ -383,15 +383,31 @@ def analyze():
                 "rate":f'{r["rate"]:.2f}%'.replace(".",","),
                 "spend":money(r["Расходы"]),"cpa":money(r["cpa"]) if r["Контакты"] else "—"})
 
-        # Build evidence-based preliminary labels. Avoid strong conclusions from tiny samples.
-        avg_cpa = cpa
+        # Compare listings against peers, not the whole account: cities/categories can have
+        # materially different economics. Require at least three other eligible listings.
+        eligible_peers = df[(df["Просмотры"] >= 100) & (df["Контакты"] >= 3)].copy()
+        eligible_peers["_peer_cpa"] = eligible_peers["Расходы"] / eligible_peers["Контакты"]
         rows = []
         row_actions = []
-        for _, r in df.iterrows():
+        for idx, r in df.iterrows():
             obj_cpa = float(r["Стоимость контакта, ₽"])
             rv = float(r["Просмотры"])
             rc = float(r["Контакты"])
             rs = float(r["Расходы"])
+            same_city_category = eligible_peers[
+                (eligible_peers["Город"] == r["Город"]) &
+                (eligible_peers["Категория"] == r["Категория"]) &
+                (eligible_peers.index != idx)
+            ]
+            benchmark_scope = "в том же городе и категории"
+            peers = same_city_category
+            if len(peers) < 3:
+                peers = eligible_peers[
+                    (eligible_peers["Категория"] == r["Категория"]) &
+                    (eligible_peers.index != idx)
+                ]
+                benchmark_scope = "в той же категории по всем городам"
+            benchmark_cpa = float(peers["_peer_cpa"].median()) if len(peers) >= 3 else 0.0
             if rc == 0 and rs > 0 and rv >= 100:
                 status, kind = "Проверить расходы", "bad"
                 action = "check"
@@ -400,20 +416,24 @@ def analyze():
                 status, kind = "Недостаточно данных", "warn"
                 action = "insufficient"
                 next_step = "Накопить статистику; пока не менять бюджет только по этим данным."
-            elif avg_cpa > 0 and obj_cpa <= avg_cpa * 0.80 and rc >= 5:
+            elif benchmark_cpa <= 0:
+                status, kind = "Нет сопоставимых данных", "warn"
+                action = "compare"
+                next_step = "Недостаточно похожих объявлений с минимум 100 просмотрами и 3 контактами для надёжного сравнения."
+            elif obj_cpa <= benchmark_cpa * 0.80 and rc >= 5:
                 status, kind = "Потенциал усиления", ""
                 action = "strengthen"
-                next_step = "Проверить качество контактов и стабильность результата; затем тестировать небольшое увеличение бюджета."
+                next_step = f"Стоимость контакта минимум на 20% ниже медианы аналогов {benchmark_scope}. Проверьте качество контактов и стабильность результата перед тестом увеличения бюджета."
                 row_actions.append((r, obj_cpa))
-            elif avg_cpa > 0 and obj_cpa >= avg_cpa * 1.25 and rc >= 3:
+            elif obj_cpa >= benchmark_cpa * 1.25:
                 status, kind = "Оптимизировать", "warn"
                 action = "optimize"
-                next_step = "Сравнить с похожими объявлениями и проверить цену, фото и предложение до сокращения бюджета."
+                next_step = f"Стоимость контакта минимум на 25% выше медианы аналогов {benchmark_scope}. Проверьте цену, фото и предложение до сокращения бюджета."
                 row_actions.append((r, obj_cpa))
             else:
                 status, kind = "Сопоставить с аналогами", "warn"
                 action = "compare"
-                next_step = "Сравнить с объявлениями той же категории и города при сопоставимом объёме просмотров."
+                next_step = f"Стоимость контакта близка к медиане аналогов {benchmark_scope}; продолжайте наблюдение и сравните качество обращений."
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
                 "category": safe_text(r["Категория"]) or "Не указано",
                 "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
