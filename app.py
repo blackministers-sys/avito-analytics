@@ -18,8 +18,8 @@ ALIASES = {
     "Контакты": ["Контакты"],
     "Избранное": ["Добавили в избранное"],
     "Расходы": [
-        "Расходы на размещение и целевые действия",
         "Расходы на объявления",
+        "Расходы на размещение и целевые действия",
         "Расходы на продвижение",
         "Остальные расходы",
     ],
@@ -151,7 +151,7 @@ input[type=file]{max-width:100%;color:var(--muted)}button{background:#3568ce;col
 .label{color:var(--muted);font-size:13px}.value{font-size:28px;font-weight:800;margin:10px 0 4px;letter-spacing:-.5px}
 .small{font-size:12px}.good{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--yellow)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px}
-.tablebox{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:12px;border-bottom:1px solid var(--line)}td{padding:12px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border:0}
+.tablebox{overflow:auto}.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.filters label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px}.filters select{background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px;min-width:145px}.filters button.secondary{background:#29364b}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:12px;border-bottom:1px solid var(--line)}td{padding:12px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border:0}
 .tag{font-size:11px;border-radius:5px;padding:4px 7px;background:#203c36;color:var(--green)}.tag.warn{background:#40351f;color:var(--yellow)}.tag.bad{background:#432630;color:var(--red)}
 .rec{padding:12px 0;border-bottom:1px solid var(--line)}.rec:last-child{border:0}.rec strong{display:block;margin:7px 0 4px}
 .error{background:#432630;color:#ffb5bd;border:1px solid #80404b;padding:12px;border-radius:8px;margin:14px 0}
@@ -184,23 +184,113 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </section>
 <section class="cols">
 <div class="panel"><h2>Автоматические наблюдения</h2>
+<div id="recommendationScopeNotice" class="muted small" hidden>Включены фильтры. Наблюдения ниже рассчитаны по всей выгрузке, поэтому скрыты, чтобы не смешивать выборки.</div>
+<div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
-</div>
-<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in cities %}<tr><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+</div></div>
+<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
+{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
-<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in categories %}<tr><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
+{% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
+<section class="panel" style="margin-top:15px">
+<h2>Фильтры и сортировка</h2>
+<div class="filters">
+<label>Город <select id="filterCity"><option value="">Все города</option></select></label>
+<label>Категория <select id="filterCategory"><option value="">Все категории</option></select></label>
+<label>Оценка <select id="filterStatus"><option value="">Все оценки</option></select></label>
+<label>Контакты <select id="filterContacts"><option value="">Любое количество</option><option value="yes">Есть контакты</option><option value="no">Нет контактов</option></select></label>
+<label>Сортировать <select id="sortBy"><option value="default">По исходному порядку</option><option value="shows">Показы: больше → меньше</option><option value="views">Просмотры: больше → меньше</option><option value="contacts">Контакты: больше → меньше</option><option value="rate">Конверсия в контакт: выше → ниже</option><option value="spend">Расходы: больше → меньше</option><option value="cpaAsc">Стоимость контакта: дешевле → дороже</option><option value="cpaDesc">Стоимость контакта: дороже → дешевле</option></select></label>
+<button type="button" id="resetFilters" class="secondary">Сбросить</button>
+</div><div class="muted small" id="filterCount" style="margin-top:10px"></div>
+</section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, объект обозначается городом, категорией, параметром и ценой.</div>
 <div class="tablebox"><table><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th></tr></thead><tbody>
-{% for r in rows %}<tr><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
+{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
 {% endif %}
 <footer>Avito Analytics · MVP · Аналитические оценки предварительные и не заменяют проверку бизнес-контекста.</footer>
+</div>
+<script>
+(function(){
+ const table = document.querySelector('.data-row')?.closest('table');
+ if (!table) return;
+ const body = table.querySelector('tbody');
+ const rows = Array.from(body.querySelectorAll('tr.data-row'));
+ const citySelect = document.getElementById('filterCity');
+ const categorySelect = document.getElementById('filterCategory');
+ const statusSelect = document.getElementById('filterStatus');
+ const contactsSelect = document.getElementById('filterContacts');
+ const sortSelect = document.getElementById('sortBy');
+ const count = document.getElementById('filterCount');
+ const uniq = (key) => [...new Set(rows.map(r=>r.dataset[key]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+ function fill(select, values){values.forEach(v=>{const o=document.createElement('option');o.value=v;o.textContent=v;select.appendChild(o);});}
+ fill(citySelect,uniq('city')); fill(categorySelect,uniq('category')); fill(statusSelect,uniq('status'));
+ const original = new Map(rows.map((r,i)=>[r,i]));
+ function n(r,key){const v=Number(r.dataset[key]);return Number.isFinite(v)?v:0;}
+ function apply(){
+   let shown=rows.filter(r=>(!citySelect.value||r.dataset.city===citySelect.value)&&(!categorySelect.value||r.dataset.category===categorySelect.value)&&(!statusSelect.value||r.dataset.status===statusSelect.value)&&(!contactsSelect.value||(contactsSelect.value==='yes'?n(r,'contacts')>0:n(r,'contacts')===0)));
+   const key=sortSelect.value;
+   const map={shows:'shows',views:'views',contacts:'contacts',rate:'rate',spend:'spend',cpaAsc:'cpa',cpaDesc:'cpa'};
+   if(map[key]) shown.sort((a,b)=> (key==='cpaAsc'?1:-1)*(n(a,map[key])-n(b,map[key])));
+   else shown.sort((a,b)=>original.get(a)-original.get(b));
+   rows.forEach(r=>r.hidden=true); shown.forEach(r=>{r.hidden=false;body.appendChild(r);});
+   // Rebuild summary tables from the exact filtered listing set, not from the full export.
+   function renderSummary(tableSelector, key, type){
+     const summaryBody=document.querySelector(tableSelector)?.querySelector('tbody');
+     if(!summaryBody) return;
+     const groups=new Map();
+     shown.forEach(r=>{
+       const name=(r.dataset[key]||'').trim()||'Не указано';
+       if(!groups.has(name)) groups.set(name,{name,shows:0,views:0,contacts:0,spend:0});
+       const g=groups.get(name);
+       g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend');
+     });
+     const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
+     summaryBody.replaceChildren();
+     sorted.forEach(g=>{
+       const tr=document.createElement('tr');
+       tr.className=type==='city'?'city-summary-row':'category-summary-row';
+       tr.dataset[key]=g.name;
+       const cpa=g.contacts?Math.round(g.spend/g.contacts).toLocaleString('ru-RU')+' ₽':'—';
+       if(type==='city'){
+         [g.name,Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+       } else {
+         const rate=g.views?g.contacts/g.views*100:0;
+         [g.name,Math.round(g.shows).toLocaleString('ru-RU'),Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',Math.round(g.spend).toLocaleString('ru-RU')+' ₽',cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+       }
+       summaryBody.appendChild(tr);
+     });
+   }
+   renderSummary('#citySummaryTable','city','city');
+   renderSummary('#categorySummaryTable','summaryCategory','category');
+   const scoped=!!(citySelect.value||categorySelect.value||statusSelect.value||contactsSelect.value);
+   document.getElementById('recommendationsList').hidden=scoped;
+   document.getElementById('recommendationScopeNotice').hidden=!scoped;
+   count.textContent='Показано объявлений: '+shown.length+' из '+rows.length;
+   const sums=shown.reduce((a,r)=>{a.shows+=n(r,'shows');a.views+=n(r,'views');a.contacts+=n(r,'contacts');a.spend+=n(r,'spend');return a;},{shows:0,views:0,contacts:0,spend:0});
+   const metrics=Array.from(document.querySelectorAll('.metric'));
+   const fmt=x=>Math.round(x).toLocaleString('ru-RU');
+   const money=x=>Math.round(x).toLocaleString('ru-RU')+' ₽';
+   if(metrics.length>=4){
+    metrics[0].querySelector('.value').textContent=fmt(sums.shows);
+    metrics[1].querySelector('.value').textContent=fmt(sums.views);
+    metrics[1].querySelector('.small').textContent='Конверсия из показов: '+(sums.shows?sums.views/sums.shows*100:0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%';
+    metrics[2].querySelector('.value').textContent=fmt(sums.contacts);
+    metrics[2].querySelector('.small').textContent='Конверсия в контакт: '+(sums.views?sums.contacts/sums.views*100:0).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%';
+    metrics[3].querySelector('.value').textContent=money(sums.spend);
+    metrics[3].querySelector('.small').textContent='Стоимость контакта: '+(sums.contacts?money(sums.spend/sums.contacts):'—');
+   }
+ }
+ [citySelect,categorySelect,statusSelect,contactsSelect,sortSelect].forEach(el=>el.addEventListener('change',apply));
+ document.getElementById('resetFilters').addEventListener('click',()=>{[citySelect,categorySelect,statusSelect,contactsSelect].forEach(el=>el.value='');sortSelect.value='default';apply();});
+ apply();
+})();
+</script>
 </div></body></html>
 """
 
@@ -320,11 +410,16 @@ def analyze():
                 status, kind = "Сопоставить с аналогами", "warn"
                 action = "compare"
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
+                "category": safe_text(r["Категория"]) or "Не указано",
+                "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
                 "shows":integer(r["Показы"]),"views":integer(rv),
                 "contacts":integer(rc),
                 "rate":f'{r["Конверсия в контакт, %"]:.2f}%'.replace(".",","),
                 "spend":money(rs),
                 "cpa":money(obj_cpa) if rc else "—",
+                "raw_shows":float(r["Показы"]), "raw_views":rv, "raw_contacts":rc,
+                "raw_rate":float(r["Конверсия в контакт, %"]), "raw_spend":rs,
+                "raw_cpa":obj_cpa if rc else 1e30,
                 "status":status,"kind":kind})
 
         recommendations = []
