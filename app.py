@@ -208,7 +208,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, объект обозначается городом, категорией, параметром и ценой.</div>
 <div class="tablebox"><table><thead><tr><th>Объект</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Оценка</th></tr></thead><tbody>
-{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
+{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
@@ -267,7 +267,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
      });
    }
    renderSummary('#citySummaryTable','city','city');
-   renderSummary('#categorySummaryTable','category','category');
+   renderSummary('#categorySummaryTable','summaryCategory','category');
    const scoped=!!(citySelect.value||categorySelect.value||statusSelect.value||contactsSelect.value);
    document.getElementById('recommendationsList').hidden=scoped;
    document.getElementById('recommendationScopeNotice').hidden=!scoped;
@@ -410,7 +410,8 @@ def analyze():
                 status, kind = "Сопоставить с аналогами", "warn"
                 action = "compare"
             rows.append({"name":safe_text(r["Объект"]), "city":safe_text(r["Город"]) or "—",
-                "category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
+                "category": safe_text(r["Категория"]) or "Не указано",
+                "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
                 "shows":integer(r["Показы"]),"views":integer(rv),
                 "contacts":integer(rc),
                 "rate":f'{r["Конверсия в контакт, %"]:.2f}%'.replace(".",","),
