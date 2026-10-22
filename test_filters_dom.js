@@ -21,9 +21,9 @@ const html = `<!doctype html><html><body>
   <select id="sortBy"><option value="default">Исходный порядок</option><option value="contacts">Контакты: больше</option><option value="cpaAsc">CPA: дешевле</option></select>
   <button id="resetFilters" type="button">Сбросить</button><div id="filterCount"></div>
   <table><tbody>
-    <tr class="data-row" data-city="Омск" data-category="Авто" data-status="Хорошо" data-shows="100" data-views="20" data-contacts="2" data-rate="10" data-spend="200" data-cpa="100" data-name="A"><td>A</td></tr>
-    <tr class="data-row" data-city="Ростов" data-category="Авто" data-status="Слабо" data-shows="200" data-views="30" data-contacts="0" data-rate="0" data-spend="50" data-cpa="1e30" data-name="B"><td>B</td></tr>
-    <tr class="data-row" data-city="Омск" data-category="Запчасти" data-status="Хорошо" data-shows="300" data-views="60" data-contacts="6" data-rate="10" data-spend="300" data-cpa="50" data-name="C"><td>C</td></tr>
+    <tr class="data-row" data-city="Омск" data-category="Авто" data-summary-category="Авто · Запчасти · A" data-status="Хорошо" data-shows="100" data-views="20" data-contacts="2" data-rate="10" data-spend="200" data-cpa="100" data-name="A"><td>A</td></tr>
+    <tr class="data-row" data-city="Ростов" data-category="Авто" data-summary-category="Авто · Запчасти · B" data-status="Слабо" data-shows="200" data-views="30" data-contacts="0" data-rate="0" data-spend="50" data-cpa="1e30" data-name="B"><td>B</td></tr>
+    <tr class="data-row" data-city="Омск" data-category="Запчасти" data-summary-category="Запчасти · Кузов · C" data-status="Хорошо" data-shows="300" data-views="60" data-contacts="6" data-rate="10" data-spend="300" data-cpa="50" data-name="C"><td>C</td></tr>
   </tbody></table>
   <table id="citySummaryTable"><tbody></tbody></table>
   <table id="categorySummaryTable"><tbody></tbody></table>
