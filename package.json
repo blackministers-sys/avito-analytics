@@ -1,0 +1,10 @@
+{
+  "name": "avito-analytics-tests",
+  "private": true,
+  "scripts": {
+    "test:filters": "node test_filters_dom.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
