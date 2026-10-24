@@ -440,9 +440,9 @@ def analyze():
                 next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {len(peers)}."
             if rc == 0 and rs > 0 and rv >= 100:
                 priority, priority_kind = "Высокий", "bad"
-            elif action == "optimize" and rs >= median_spend and median_spend > 0:
+            elif action == "optimize" and benchmark_cpa > 0 and obj_cpa >= benchmark_cpa * 1.5 and rc >= 3:
                 priority, priority_kind = "Высокий", "bad"
-            elif rs > 0 and (action in ("check", "optimize") or rv < 100 or rc < 3):
+            elif rs > 0 and (action in ("check", "optimize", "insufficient") or rv < 100 or rc < 3):
                 priority, priority_kind = "Средний", "warn"
             else:
                 priority, priority_kind = "Низкий", ""
