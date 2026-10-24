@@ -18,12 +18,12 @@ const html = `<!doctype html><html><body>
   <select id="filterCategory"><option value="">Все категории</option></select>
   <select id="filterStatus"><option value="">Все оценки</option></select>
   <select id="filterContacts"><option value="">Любое количество</option><option value="yes">Есть контакты</option><option value="no">Нет контактов</option></select>
-  <select id="sortBy"><option value="default">Исходный порядок</option><option value="contacts">Контакты: больше</option><option value="cpaAsc">CPA: дешевле</option></select>
+  <select id="sortBy"><option value="default">Исходный порядок</option><option value="contacts">Контакты: больше</option><option value="cpaAsc">CPA: дешевле</option><option value="priority">Приоритет</option></select>
   <button id="resetFilters" type="button">Сбросить</button><div id="filterCount"></div>
   <table><tbody>
-    <tr class="data-row" data-city="Омск" data-category="Авто" data-summary-category="Авто · Запчасти · A" data-status="Хорошо" data-shows="100" data-views="20" data-contacts="2" data-rate="10" data-spend="200" data-cpa="100" data-name="A"><td>A</td></tr>
-    <tr class="data-row" data-city="Ростов" data-category="Авто" data-summary-category="Авто · Запчасти · B" data-status="Слабо" data-shows="200" data-views="30" data-contacts="0" data-rate="0" data-spend="50" data-cpa="1e30" data-name="B"><td>B</td></tr>
-    <tr class="data-row" data-city="Омск" data-category="Запчасти" data-summary-category="Запчасти · Кузов · C" data-status="Хорошо" data-shows="300" data-views="60" data-contacts="6" data-rate="10" data-spend="300" data-cpa="50" data-name="C"><td>C</td></tr>
+    <tr class="data-row" data-city="Омск" data-category="Авто" data-summary-category="Авто · Запчасти · A" data-status="Хорошо" data-shows="100" data-views="20" data-contacts="2" data-rate="10" data-spend="200" data-cpa="100" data-priority="2" data-name="A"><td>A</td></tr>
+    <tr class="data-row" data-city="Ростов" data-category="Авто" data-summary-category="Авто · Запчасти · B" data-status="Слабо" data-shows="200" data-views="30" data-contacts="0" data-rate="0" data-spend="50" data-cpa="1e30" data-priority="3" data-name="B"><td>B</td></tr>
+    <tr class="data-row" data-city="Омск" data-category="Запчасти" data-summary-category="Запчасти · Кузов · C" data-status="Хорошо" data-shows="300" data-views="60" data-contacts="6" data-rate="10" data-spend="300" data-cpa="50" data-priority="1" data-name="C"><td>C</td></tr>
   </tbody></table>
   <table id="citySummaryTable"><tbody></tbody></table>
   <table id="categorySummaryTable"><tbody></tbody></table>
@@ -51,6 +51,12 @@ category.dispatchEvent(new Event('change'));
 assert.deepStrictEqual(visibleNames(), ['A', 'B']);
 assert.strictEqual(count.textContent, 'Показано объявлений: 2 из 3');
 assert.strictEqual(document.querySelectorAll('#categorySummaryTable tbody tr').length, 2);
+document.getElementById('resetFilters').click();
+
+// Priority sort places high-priority listings first and keeps stable order for ties.
+sort.value = 'priority';
+sort.dispatchEvent(new Event('change'));
+assert.deepStrictEqual(visibleNames(), ['B', 'A', 'C']);
 document.getElementById('resetFilters').click();
 
 // City filter narrows listing rows and rebuilds summary groups and KPIs.
