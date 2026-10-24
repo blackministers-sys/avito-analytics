@@ -188,8 +188,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
-<div class="panel"><h2>Сводка по городам</h2><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+<div class="panel"><h2>Сводка по городам</h2><p class="muted small">Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Просмотр → контакт</th><th>Контакты</th><th>Расходы</th><th>₽/контакт</th><th>Без контактов</th></tr></thead><tbody>
+{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.ads }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contact_rate }}</td><td>{{ r.contacts }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td>{{ r.no_contact_share }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
 <section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
@@ -361,11 +361,20 @@ def analyze():
         # Warn in the UI that totals need a check if export contains overlapping cuts.
         city_col = df["Город"].replace("", "Не указан")
         city_df = df.assign(_city=city_col).groupby("_city", as_index=False).agg(
-            Просмотры=("Просмотры", "sum"), Контакты=("Контакты", "sum"), Расходы=("Расходы", "sum"))
+            Объявлений=("Город", "size"), Показы=("Показы", "sum"),
+            Просмотры=("Просмотры", "sum"), Контакты=("Контакты", "sum"),
+            Расходы=("Расходы", "sum"),
+            БезКонтактов=("Контакты", lambda values: int((values == 0).sum())))
         city_df["cpa"] = city_df["Расходы"] / city_df["Контакты"].replace(0, pd.NA)
-        city_df = city_df.fillna(0).sort_values(["Контакты", "Просмотры"], ascending=False).head(10)
-        cities = [{"name":safe_text(r["_city"]), "views":integer(r["Просмотры"]),
-                   "contacts":integer(r["Контакты"]), "cpa":money(r["cpa"]) if r["Контакты"] else "—"}
+        city_df["contact_rate"] = city_df["Контакты"] / city_df["Просмотры"].replace(0, pd.NA) * 100
+        city_df["no_contact_share"] = city_df["БезКонтактов"] / city_df["Объявлений"].replace(0, pd.NA) * 100
+        city_df = city_df.sort_values(["Контакты", "Просмотры"], ascending=False).head(15).fillna(0)
+        cities = [{"name":safe_text(r["_city"]), "ads":integer(r["Объявлений"]),
+                   "shows":integer(r["Показы"]), "views":integer(r["Просмотры"]),
+                   "contacts":integer(r["Контакты"]), "spend":money(r["Расходы"]),
+                   "contact_rate":f'{r["contact_rate"]:.2f}%'.replace(".",",") if r["Просмотры"] else "—",
+                   "no_contact_share":f'{r["no_contact_share"]:.0f}%'.replace(".",","),
+                   "cpa":money(r["cpa"]) if r["Контакты"] else "—"}
                   for _, r in city_df.iterrows()]
 
         group_cols = ["Категория", "Подкатегория", "Параметр"]
