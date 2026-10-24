@@ -246,9 +246,10 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
      const groups=new Map();
      shown.forEach(r=>{
        const name=(r.dataset[key]||'').trim()||'Не указано';
-       if(!groups.has(name)) groups.set(name,{name,shows:0,views:0,contacts:0,spend:0});
+       if(!groups.has(name)) groups.set(name,{name,ads:0,shows:0,views:0,contacts:0,spend:0,noContacts:0});
        const g=groups.get(name);
-       g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend');
+       g.ads+=1; g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend');
+       if(n(r,'contacts')===0) g.noContacts+=1;
      });
      const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
      summaryBody.replaceChildren();
@@ -258,7 +259,14 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
        tr.dataset[key]=g.name;
        const cpa=g.contacts?Math.round(g.spend/g.contacts).toLocaleString('ru-RU')+' ₽':'—';
        if(type==='city'){
-         [g.name,Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
+         const rate=g.views?g.contacts/g.views*100:0;
+         const noContactShare=g.ads?g.noContacts/g.ads*100:0;
+         [g.name,Math.round(g.ads).toLocaleString('ru-RU'),Math.round(g.shows).toLocaleString('ru-RU'),
+          Math.round(g.views).toLocaleString('ru-RU'),
+          g.views?rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%':'—',
+          Math.round(g.contacts).toLocaleString('ru-RU'),Math.round(g.spend).toLocaleString('ru-RU')+' ₽',
+          cpa,noContactShare.toLocaleString('ru-RU',{maximumFractionDigits:1})+'%']
+          .forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
        } else {
          const rate=g.views?g.contacts/g.views*100:0;
          [g.name,Math.round(g.shows).toLocaleString('ru-RU'),Math.round(g.views).toLocaleString('ru-RU'),Math.round(g.contacts).toLocaleString('ru-RU'),rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',Math.round(g.spend).toLocaleString('ru-RU')+' ₽',cpa].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
