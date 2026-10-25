@@ -434,7 +434,8 @@ def analyze():
         df = prepare_data(source)
         LAST_EXPORT = df.copy()
 
-        # Persist an immutable snapshot for later period-over-period analysis.
+        # Persist an immutable snapshot. The export's reporting period is not parsed yet,
+        # so comparisons are by upload time and must be treated as preliminary.
         history_account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
         history_rows = []
         for _, history_row in df.iterrows():
@@ -699,11 +700,12 @@ def history():
     </style>
     <h1>История статистики</h1><p><a href="/">← Вернуться к загрузке</a></p>
     <p class="muted">Аккаунт: {{ account }}. Повторная загрузка идентичного файла не создаёт новый снимок.</p>
+    <div class="panel"><strong>Важно о точности сравнения</strong><p class="muted">Сейчас приложение сохраняет дату загрузки, но не определяет автоматически период статистики внутри файла. Поэтому два снимка сравниваются по времени загрузки, а не по подтверждённым непересекающимся периодам. Если выгрузки содержат накопительные значения или разные диапазоны дат, разница не показывает изменение эффективности за период. Используйте её только как предварительную проверку; следующий этап — распознавание периода и корректное сравнение сопоставимых интервалов.</p></div>
     <div class="panel"><h2>Последние снимки</h2>
     {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата сохранения</th><th>Файл</th><th>Строк</th></tr></thead><tbody>
     {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{{s.row_count}}</td></tr>{% endfor %}
     </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
-    <div class="panel"><h2>Сравнение двух последних снимков</h2>
+    <div class="panel"><h2>Предварительное сравнение двух последних снимков</h2>
     {% if comparison.available %}
       <p>{{comparison.older_captured_at}} → {{comparison.newer_captured_at}}</p>
       <p>Изменения строк: {{comparison.changes|length}}</p>
