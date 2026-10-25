@@ -37,6 +37,19 @@ class HistoryStoreTests(unittest.TestCase):
         self.assertEqual(loaded["row_count"], 1)
         self.assertEqual(loaded["observations"][0]["views"], 20)
 
+
+    def test_reporting_period_is_saved_and_listed(self):
+        saved = self.store.save_snapshot(
+            [self.row()], b"period-export", "week.xlsx",
+            report_start="2026-10-19", report_end="2026-10-25"
+        )
+        loaded = self.store.get_snapshot(saved["snapshot_id"])
+        self.assertEqual(loaded["report_start"], "2026-10-19")
+        self.assertEqual(loaded["report_end"], "2026-10-25")
+        listed = self.store.list_snapshots()[0]
+        self.assertEqual(listed["report_start"], "2026-10-19")
+        self.assertEqual(listed["report_end"], "2026-10-25")
+
     def test_same_account_and_file_is_not_duplicated(self):
         first = self.store.save_snapshot([self.row()], b"same-export", "a.xlsx")
         second = self.store.save_snapshot([self.row()], b"same-export", "a.xlsx")
