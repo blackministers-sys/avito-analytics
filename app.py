@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from data_validation import validate_export
 from excel_import import read_excel_preserving_hyperlinks
-from flask import Flask, request, render_template_string, send_file, redirect, redirect
+from flask import Flask, request, render_template_string, send_file, redirect
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
