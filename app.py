@@ -714,8 +714,8 @@ def history():
     <p class="muted">Аккаунт: {{ account }}. Повторная загрузка идентичного файла не создаёт новый снимок.</p>
     <div class="panel"><strong>Важно о точности сравнения</strong><p class="muted">Сейчас приложение сохраняет дату загрузки, но не определяет автоматически период статистики внутри файла. Поэтому два снимка сравниваются по времени загрузки, а не по подтверждённым непересекающимся периодам. Если выгрузки содержат накопительные значения или разные диапазоны дат, разница не показывает изменение эффективности за период. Используйте её только как предварительную проверку; следующий этап — распознавание периода и корректное сравнение сопоставимых интервалов.</p></div>
     <div class="panel"><h2>Последние снимки</h2>
-    {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата загрузки</th><th>Файл</th><th>Период отчёта</th><th>Строк</th></tr></thead><tbody>
-    {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{% if s.report_start or s.report_end %}{{s.report_start or "…"}} — {{s.report_end or "…"}}{% else %}<span class="muted">Не указан</span>{% endif %}</td><td>{{s.row_count}}</td></tr>{% endfor %}
+    {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата загрузки</th><th>Файл</th><th>Период отчёта</th><th>Строк</th><th>Данные</th></tr></thead><tbody>
+    {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{% if s.report_start or s.report_end %}{{s.report_start or "…"}} — {{s.report_end or "…"}}{% else %}<span class="muted">Не указан</span>{% endif %}</td><td>{{s.row_count}}</td><td><a href="/history/{{s.id}}">Открыть данные →</a></td></tr>{% endfor %}
     </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
     <div class="panel"><h2>Предварительное сравнение двух последних снимков</h2>
     {% if comparison.available %}
@@ -736,6 +736,46 @@ def history():
     {% else %}<p>{{comparison.reason}}</p>{% endif %}</div>
     </html>
     """, account=account, snapshots=snapshots, comparison=comparison)
+
+
+
+@app.get("/history/<int:snapshot_id>")
+def history_snapshot(snapshot_id: int):
+    account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
+    store = HistoryStore()
+    snapshot = store.get_snapshot(snapshot_id)
+    if not snapshot or snapshot.get("account") != account:
+        return "Снимок не найден.", 404
+    observations = snapshot.get("observations", [])
+    return render_template_string("""
+    <!doctype html><html lang="ru"><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Данные снимка — Avito Analytics</title>
+    <style>
+      body{font-family:Arial,sans-serif;max-width:1200px;margin:30px auto;padding:0 16px;background:#0b1120;color:#e5e7eb}
+      a{color:#8ab4ff}.muted{color:#9ca3af}table{width:100%;border-collapse:collapse;margin:18px 0}
+      th,td{text-align:left;padding:9px;border-bottom:1px solid #374151;font-size:13px}
+      .panel{border:1px solid #374151;border-radius:10px;padding:16px;margin:18px 0;overflow:auto}
+    </style>
+    <h1>Данные снимка №{{ snapshot.id }}</h1>
+    <p><a href="/history">← Вернуться в историю</a></p>
+    <div class="panel">
+      <p><strong>Файл:</strong> {{ snapshot.source_filename }}</p>
+      <p><strong>Дата загрузки:</strong> {{ snapshot.captured_at }}</p>
+      <p><strong>Период:</strong> {% if snapshot.report_start or snapshot.report_end %}{{ snapshot.report_start or "…" }} — {{ snapshot.report_end or "…" }}{% else %}не указан{% endif %}</p>
+      <p><strong>Строк в снимке:</strong> {{ observations|length }} (в метаданных: {{ snapshot.row_count }})</p>
+    </div>
+    {% if observations %}
+    <div class="panel"><table><thead><tr>
+      <th>№ объявления</th><th>Название</th><th>Город</th><th>Категория</th><th>Цена</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Расходы</th><th>Избранное</th>
+    </tr></thead><tbody>
+    {% for row in observations %}<tr>
+      <td>{{ row.ad_number or "—" }}</td><td>{{ row.title or "—" }}</td><td>{{ row.city or "—" }}</td><td>{{ row.category or "—" }}</td><td>{{ row.price or "—" }}</td><td>{{ row.shows|round(0)|int }}</td><td>{{ row.views|round(0)|int }}</td><td>{{ row.contacts|round(0)|int }}</td><td>{{ row.spend|round(2) }}</td><td>{{ row.favorites|round(0)|int }}</td>
+    </tr>{% endfor %}
+    </tbody></table></div>
+    {% else %}<div class="panel">В снимке нет сохранённых строк объявлений. Возможно, запись была создана без данных или возникла ошибка сохранения.</div>{% endif %}
+    </html>
+    """, snapshot=snapshot, observations=observations)
 
 
 @app.get("/download")
