@@ -166,7 +166,16 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><label class="muted small">Период отчёта с <input type="date" name="report_start" aria-label="Начало периода отчёта"></label><label class="muted small">по <input type="date" name="report_end" aria-label="Конец периода отчёта"></label><button type="submit">Анализировать</button></form></section>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if has_data %}
-<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Для истории можно указать период отчёта в форме загрузки</div></section>
+<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период отчёта — метка выгрузки; он не фильтрует данные внутри файла</div></section>
+{% if history_result is defined %}
+<section class="panel" style="margin-top:12px;border-color:#35685a">
+<h2>Результат сохранения истории</h2>
+<p>Файл: {{ history_result.source_filename }} · Снимок №{{ history_result.snapshot_id }}</p>
+<p>{% if history_result.created %}Создана новая запись истории.{% else %}Этот файл уже был в истории; проверено и обновлено заполнение периода.{% endif %}</p>
+<p>Период отчёта: {% if history_result.report_start or history_result.report_end %}{{ history_result.report_start or "не указан" }} — {{ history_result.report_end or "не указан" }}{% else %}не указан{% endif %}</p>
+<p><a href="/history">Открыть историю статистики →</a></p>
+</section>
+{% endif %}
 {% if validation_report %}
 <section class="panel" style="margin-top:15px;border-color:{{ '#80404b' if validation_report.status == 'needs_review' else '#6c5734' }}">
 <h2>Проверка качества данных: {{ validation_report.status_label }}</h2>
@@ -458,6 +467,7 @@ def analyze():
             report_start=request.form.get("report_start", ""),
             report_end=request.form.get("report_end", "")
         )
+        history_result["source_filename"] = file.filename
 
         shows = df["Показы"].sum()
         views = df["Просмотры"].sum()
@@ -678,7 +688,7 @@ def analyze():
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
-            categories=categories, rows=rows)
+            categories=categories, rows=rows, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
