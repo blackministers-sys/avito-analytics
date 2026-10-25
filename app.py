@@ -6,7 +6,7 @@ from datetime import datetime
 import pandas as pd
 from data_validation import validate_export
 from excel_import import read_excel_preserving_hyperlinks
-from flask import Flask, request, render_template_string, send_file
+from flask import Flask, request, render_template_string, send_file, redirect
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024  # 20 MB
@@ -369,6 +369,11 @@ def safe_text(v):
 @app.get("/")
 def home():
     return render_template_string(PAGE, has_data=False, error=None)
+
+@app.get("/analyze")
+def analyze_get():
+    # Refreshing the upload endpoint sends GET; return users to the upload page instead of 405.
+    return redirect("/")
 
 @app.post("/analyze")
 def analyze():
