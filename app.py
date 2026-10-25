@@ -252,19 +252,29 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
        if(n(r,'contacts')===0) g.noContacts+=1;
      });
      const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
+     const accountTotals=shown.reduce((a,r)=>{a.views+=n(r,'views');a.contacts+=n(r,'contacts');a.spend+=n(r,'spend');return a;},{views:0,contacts:0,spend:0});
+     const accountCpa=accountTotals.contacts?accountTotals.spend/accountTotals.contacts:0;
      summaryBody.replaceChildren();
      sorted.forEach(g=>{
        const tr=document.createElement('tr');
        tr.className=type==='city'?'city-summary-row':'category-summary-row';
        tr.dataset[key]=g.name;
-       const cpa=g.contacts?Math.round(g.spend/g.contacts).toLocaleString('ru-RU')+' ₽':'—';
+       const cpaValue=g.contacts?g.spend/g.contacts:0;
+       const cpa=g.contacts?Math.round(cpaValue).toLocaleString('ru-RU')+' ₽':'—';
        if(type==='city'){
          const rate=g.views?g.contacts/g.views*100:0;
-         const signal = g.contacts===0 && g.views>=100 && g.spend>0
-           ? 'Проверить расходы: есть просмотры, нет контактов'
-           : (g.contacts<5 || g.views<300)
-             ? 'Мало данных — продолжить тест'
-             : 'Наблюдать; сравнить одинаковые категории';
+         let signal;
+         if(g.contacts===0 && g.views>=100 && g.spend>0){
+           signal='Проверить объявления: есть расходы, нет контактов';
+         } else if(g.contacts<5 || g.views<300){
+           signal='Мало данных — продолжить тест';
+         } else if(accountCpa>0 && g.contacts>=10 && cpaValue<=accountCpa*0.8){
+           signal='Стоимость контакта ниже средней минимум на 20% — проверить качество и стабильность';
+         } else if(accountCpa>0 && g.contacts>=10 && cpaValue>=accountCpa*1.25){
+           signal='Стоимость контакта выше средней минимум на 25% — проверить объявления и качество обращений';
+         } else {
+           signal='Результат близок к среднему; сравнить одинаковые категории';
+         }
          [g.name,Math.round(g.views).toLocaleString('ru-RU'),
           Math.round(g.contacts).toLocaleString('ru-RU'),
           g.views?rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%':'—',
