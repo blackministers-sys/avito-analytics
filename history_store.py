@@ -63,6 +63,8 @@ class HistoryStore:
                     source_filename TEXT NOT NULL DEFAULT '',
                     source_hash TEXT NOT NULL,
                     row_count INTEGER NOT NULL,
+                    report_start TEXT NOT NULL DEFAULT '',
+                    report_end TEXT NOT NULL DEFAULT '',
                     UNIQUE(account, source_hash)
                 );
                 CREATE TABLE IF NOT EXISTS observations (
@@ -89,6 +91,12 @@ class HistoryStore:
                 CREATE INDEX IF NOT EXISTS idx_observations_listing
                     ON observations(listing_key, snapshot_id);
             """)
+            # Safe additive migration for databases created by earlier versions.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(snapshots)").fetchall()}
+            if "report_start" not in columns:
+                conn.execute("ALTER TABLE snapshots ADD COLUMN report_start TEXT NOT NULL DEFAULT ''")
+            if "report_end" not in columns:
+                conn.execute("ALTER TABLE snapshots ADD COLUMN report_end TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def fingerprint(source_bytes: bytes) -> str:
@@ -101,6 +109,8 @@ class HistoryStore:
         source_filename: str = "",
         account: str = "default",
         captured_at: str | None = None,
+        report_start: str = "",
+        report_end: str = "",
     ) -> dict[str, Any]:
         """Save one immutable upload. Exact same file/account is not stored twice."""
         account = _text(account) or "default"
@@ -109,7 +119,7 @@ class HistoryStore:
         rows = list(rows)
         with self._connect() as conn:
             existing = conn.execute(
-                "SELECT id, captured_at, row_count FROM snapshots WHERE account=? AND source_hash=?",
+                "SELECT id, captured_at, row_count, report_start, report_end FROM snapshots WHERE account=? AND source_hash=?",
                 (account, source_hash),
             ).fetchone()
             if existing:
@@ -118,12 +128,14 @@ class HistoryStore:
                     "created": False,
                     "captured_at": existing["captured_at"],
                     "row_count": existing["row_count"],
+                    "report_start": existing["report_start"],
+                    "report_end": existing["report_end"],
                     "source_hash": source_hash,
                 }
             cursor = conn.execute(
-                "INSERT INTO snapshots(account, captured_at, source_filename, source_hash, row_count) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (account, timestamp, _text(source_filename), source_hash, len(rows)),
+                "INSERT INTO snapshots(account, captured_at, source_filename, source_hash, row_count, report_start, report_end) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (account, timestamp, _text(source_filename), source_hash, len(rows), _text(report_start), _text(report_end)),
             )
             snapshot_id = cursor.lastrowid
             values = []
@@ -159,13 +171,15 @@ class HistoryStore:
             "created": True,
             "captured_at": timestamp,
             "row_count": len(rows),
+            "report_start": _text(report_start),
+            "report_end": _text(report_end),
             "source_hash": source_hash,
         }
 
     def list_snapshots(self, account: str = "default", limit: int = 30) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute("""
-                SELECT id, account, captured_at, source_filename, row_count, source_hash
+                SELECT id, account, captured_at, source_filename, row_count, source_hash, report_start, report_end
                 FROM snapshots WHERE account=?
                 ORDER BY captured_at DESC, id DESC LIMIT ?
             """, (_text(account) or "default", max(1, min(int(limit), 500)))).fetchall()
@@ -228,6 +242,10 @@ class HistoryStore:
             "newer_snapshot_id": newer["id"],
             "older_captured_at": older["captured_at"],
             "newer_captured_at": newer["captured_at"],
+            "older_report_start": older.get("report_start", ""),
+            "older_report_end": older.get("report_end", ""),
+            "newer_report_start": newer.get("report_start", ""),
+            "newer_report_end": newer.get("report_end", ""),
             "changes": changes,
             "note": "Разница между выгрузками сама по себе не доказывает причинный эффект изменений.",
         }
