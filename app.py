@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pandas as pd
 from data_validation import validate_export
+from history_store import HistoryStore
 from excel_import import read_excel_preserving_hyperlinks
 from flask import Flask, request, render_template_string, send_file, redirect
 
@@ -417,6 +418,28 @@ def analyze():
         df = prepare_data(source)
         LAST_EXPORT = df.copy()
 
+        # Persist an immutable snapshot for later period-over-period analysis.
+        history_account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
+        history_rows = []
+        for _, history_row in df.iterrows():
+            history_rows.append({
+                "Номер объявления": history_row.get("Номер объявления", ""),
+                "Название объявления": history_row.get("Название объявления", ""),
+                "Город": history_row.get("Город", ""),
+                "Категория": history_row.get("Категория", ""),
+                "Подкатегория": history_row.get("Подкатегория", ""),
+                "Параметр": history_row.get("Параметр", ""),
+                "Цена": history_row.get("Цена", ""),
+                "Показы": history_row.get("Показы", 0),
+                "Просмотры": history_row.get("Просмотры", 0),
+                "Контакты": history_row.get("Контакты", 0),
+                "Расходы": history_row.get("Расходы", 0),
+                "Избранное": history_row.get("Избранное", 0),
+            })
+        history_result = HistoryStore().save_snapshot(
+            history_rows, raw, source_filename=file.filename, account=history_account
+        )
+
         shows = df["Показы"].sum()
         views = df["Просмотры"].sum()
         contacts = df["Контакты"].sum()
@@ -607,6 +630,49 @@ def analyze():
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
+
+@app.get("/history")
+def history():
+    account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
+    store = HistoryStore()
+    snapshots = store.list_snapshots(account=account, limit=50)
+    comparison = store.compare_latest(account=account)
+    return render_template_string("""
+    <!doctype html><html lang="ru"><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>История — Avito Analytics</title>
+    <style>
+      body{font-family:Arial,sans-serif;max-width:1100px;margin:30px auto;padding:0 16px;background:#0b1120;color:#e5e7eb}
+      a{color:#8ab4ff} .muted{color:#9ca3af} table{width:100%;border-collapse:collapse;margin:18px 0}
+      th,td{text-align:left;padding:10px;border-bottom:1px solid #374151;font-size:14px}
+      .panel{border:1px solid #374151;border-radius:10px;padding:16px;margin:18px 0;overflow:auto}
+      code{overflow-wrap:anywhere}
+    </style>
+    <h1>История статистики</h1><p><a href="/">← Вернуться к загрузке</a></p>
+    <p class="muted">Аккаунт: {{ account }}. Повторная загрузка идентичного файла не создаёт новый снимок.</p>
+    <div class="panel"><h2>Последние снимки</h2>
+    {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата сохранения</th><th>Файл</th><th>Строк</th></tr></thead><tbody>
+    {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{{s.row_count}}</td></tr>{% endfor %}
+    </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
+    <div class="panel"><h2>Сравнение двух последних снимков</h2>
+    {% if comparison.available %}
+      <p>{{comparison.older_captured_at}} → {{comparison.newer_captured_at}}</p>
+      <p>Изменения строк: {{comparison.changes|length}}</p>
+      <p class="muted">{{comparison.note}}</p>
+      <table><thead><tr><th>Объявление</th><th>Статус</th><th>Просмотры</th><th>Контакты</th><th>Расходы</th><th>Избранное</th></tr></thead><tbody>
+      {% for x in comparison.changes %}
+       <tr><td>{{x.title}}</td><td>{% if x.status=='new' %}Новое{% elif x.status=='missing' %}Не найдено в новой выгрузке{% else %}Есть в обоих снимках{% endif %}</td>
+       {% if x.current and x.previous %}
+        <td>{{x.metrics.views.before}} → {{x.metrics.views.after}} ({{'%+.0f'|format(x.metrics.views.delta)}})</td>
+        <td>{{x.metrics.contacts.before}} → {{x.metrics.contacts.after}} ({{'%+.0f'|format(x.metrics.contacts.delta)}})</td>
+        <td>{{x.metrics.spend.before}} → {{x.metrics.spend.after}} ({{'%+.0f'|format(x.metrics.spend.delta)}})</td>
+        <td>{{x.metrics.favorites.before}} → {{x.metrics.favorites.after}} ({{'%+.0f'|format(x.metrics.favorites.delta)}})</td>
+       {% else %}<td>—</td><td>—</td><td>—</td><td>—</td>{% endif %}</tr>
+      {% endfor %}</tbody></table>
+    {% else %}<p>{{comparison.reason}}</p>{% endif %}</div>
+    </html>
+    """, account=account, snapshots=snapshots, comparison=comparison)
+
 
 @app.get("/download")
 def download():
