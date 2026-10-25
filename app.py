@@ -259,7 +259,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
      const cityCategory=new Map();
      shown.forEach(r=>{
        const city=(r.dataset.city||'').trim()||'Не указан';
-       const category=(r.dataset.summarycategory||r.dataset.category||'').trim()||'Не указано';
+       const category=(r.dataset.summaryCategory||r.dataset.category||'').trim()||'Не указано';
        const key=city+'\\u0000'+category;
        if(!cityCategory.has(key)) cityCategory.set(key,{city,category,views:0,contacts:0,spend:0});
        const g=cityCategory.get(key);
