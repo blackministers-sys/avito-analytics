@@ -254,6 +254,34 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
      const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
      const accountTotals=shown.reduce((a,r)=>{a.views+=n(r,'views');a.contacts+=n(r,'contacts');a.spend+=n(r,'spend');return a;},{views:0,contacts:0,spend:0});
      const accountCpa=accountTotals.contacts?accountTotals.spend/accountTotals.contacts:0;
+     // Build category-level benchmarks across cities from the same filtered listing set.
+     // Only compare category groups with >=100 views and >=3 contacts.
+     const cityCategory=new Map();
+     shown.forEach(r=>{
+       const city=(r.dataset.city||'').trim()||'Не указан';
+       const category=(r.dataset.summarycategory||r.dataset.category||'').trim()||'Не указано';
+       const key=city+'\\u0000'+category;
+       if(!cityCategory.has(key)) cityCategory.set(key,{city,category,views:0,contacts:0,spend:0});
+       const g=cityCategory.get(key);
+       g.views+=n(r,'views');g.contacts+=n(r,'contacts');g.spend+=n(r,'spend');
+     });
+     const categoryBenchmarks=new Map();
+     cityCategory.forEach(g=>{
+       if(g.views<100 || g.contacts<3) return;
+       if(!categoryBenchmarks.has(g.category)) categoryBenchmarks.set(g.category,[]);
+       categoryBenchmarks.get(g.category).push({...g,cpa:g.spend/g.contacts});
+     });
+     const cityCategorySignals=new Map();
+     cityCategory.forEach(g=>{
+       if(g.views<100 || g.contacts<3) return;
+       const peers=(categoryBenchmarks.get(g.category)||[]).filter(p=>p.city!==g.city);
+       if(peers.length<2) return;
+       const sortedCpa=peers.map(p=>p.cpa).sort((a,b)=>a-b);
+       const mid=Math.floor(sortedCpa.length/2);
+       const median=sortedCpa.length%2?sortedCpa[mid]:(sortedCpa[mid-1]+sortedCpa[mid])/2;
+       if(!cityCategorySignals.has(g.city)) cityCategorySignals.set(g.city,[]);
+       cityCategorySignals.get(g.city).push({category:g.category,cpa:g.spend/g.contacts,median,contacts:g.contacts,views:g.views});
+     });
      summaryBody.replaceChildren();
      sorted.forEach(g=>{
        const tr=document.createElement('tr');
@@ -268,12 +296,25 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
            signal='Проверить объявления: есть расходы, нет контактов';
          } else if(g.contacts<5 || g.views<300){
            signal='Мало данных — продолжить тест';
-         } else if(accountCpa>0 && g.contacts>=10 && cpaValue<=accountCpa*0.8){
-           signal='Стоимость контакта ниже средней минимум на 20% — проверить качество и стабильность';
-         } else if(accountCpa>0 && g.contacts>=10 && cpaValue>=accountCpa*1.25){
-           signal='Стоимость контакта выше средней минимум на 25% — проверить объявления и качество обращений';
          } else {
-           signal='Результат близок к среднему; сравнить одинаковые категории';
+           const categorySignals=cityCategorySignals.get(g.name)||[];
+           const worse=categorySignals.filter(x=>x.contacts>=5 && x.cpa>=x.median*1.25);
+           const better=categorySignals.filter(x=>x.contacts>=5 && x.cpa<=x.median*0.8);
+           if(worse.length){
+             const x=worse.sort((a,b)=>(b.cpa/b.median)-(a.cpa/a.median))[0];
+             signal='В категории «'+x.category+'» контакт дороже медианы других городов на '+Math.round((x.cpa/x.median-1)*100)+'% — проверить предложение';
+           } else if(better.length){
+             const x=better.sort((a,b)=>(a.cpa/a.median)-(b.cpa/b.median))[0];
+             signal='В категории «'+x.category+'» контакт дешевле медианы других городов на '+Math.round((1-x.cpa/x.median)*100)+'% — проверить качество и стабильность';
+           } else if(categorySignals.length){
+             signal='По сопоставимым категориям сильного отклонения нет';
+           } else if(accountCpa>0 && g.contacts>=10 && cpaValue>=accountCpa*1.25){
+             signal='Стоимость контакта выше средней по выборке — проверить объявления';
+           } else if(accountCpa>0 && g.contacts>=10 && cpaValue<=accountCpa*0.8){
+             signal='Стоимость контакта ниже средней по выборке — проверить качество и стабильность';
+           } else {
+             signal='Нет достаточных сопоставимых категорий; продолжить наблюдение';
+           }
          }
          [g.name,Math.round(g.views).toLocaleString('ru-RU'),
           Math.round(g.contacts).toLocaleString('ru-RU'),
