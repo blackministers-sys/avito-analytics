@@ -162,7 +162,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </style></head><body><div class="wrap">
 <header class="top"><div><div class="brand"><span>Avito</span> Analytics</div><div class="muted">Аналитика кабинета на основе выгрузки</div></div>
 <div class="pill">● {{ "РЕАЛЬНАЯ ВЫГРУЗКА" if has_data else "ОЖИДАЕТ ФАЙЛ" }}</div></header>
-<section class="panel upload"><div><h2>Загрузить статистику</h2><div class="muted small">Поддерживается Excel (.xlsx, .xls) до 20 МБ. Файл обрабатывается в памяти.</div></div>
+<section class="panel upload"><div><h2>Загрузить статистику</h2><div class="muted small">Поддерживается Excel (.xlsx, .xls) до 20 МБ. Файл обрабатывается в памяти.</div><div style="margin-top:12px"><a href="/history" style="display:inline-block;background:#203c36;color:#7ee0b2;border:1px solid #35685a;border-radius:8px;padding:9px 12px;text-decoration:none;font-weight:700">История статистики →</a></div></div>
 <form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><button type="submit">Анализировать</button></form></section>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if has_data %}
