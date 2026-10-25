@@ -183,6 +183,22 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div class="metric"><div class="label">Контакты</div><div class="value">{{ kpis.contacts }}</div><div class="muted small">Конверсия в контакт: {{ kpis.contact_rate }}</div></div>
 <div class="metric"><div class="label">Расходы</div><div class="value">{{ kpis.spend }}</div><div class="muted small">Стоимость контакта: {{ kpis.cpa }}</div></div>
 </section>
+<section class="panel" style="margin-top:15px">
+<h2>Маркетинговая воронка</h2>
+<p class="muted small">Показы → просмотры → контакты. Просадка определяется по конверсии и объёму данных; без сопоставимого прошлого периода или внешнего ориентира это предварительная диагностика, а не доказательство причины.</p>
+<div class="grid">
+{% for step in funnel %}
+<div class="metric">
+<div class="label">{{ step.name }}</div>
+<div class="value">{{ step.rate }}</div>
+<div class="muted small">{{ step.input }} → {{ step.output }}</div>
+<div style="margin-top:10px"><span class="tag {{ step.kind }}">{{ step.status }}</span></div>
+<strong style="display:block;margin-top:10px">{{ step.action_title }}</strong>
+<div class="muted small" style="margin-top:5px">{{ step.action_text }}</div>
+</div>
+{% endfor %}
+</div>
+</section>
 <section class="cols">
 <div class="panel"><h2>Автоматические наблюдения</h2>
 <div id="recommendationScopeNotice" class="muted small" hidden>Включены фильтры. Наблюдения ниже рассчитаны по всей выгрузке, поэтому скрыты, чтобы не смешивать выборки.</div>
@@ -620,11 +636,52 @@ def analyze():
         # Keep the interface concise while preserving the most actionable observations.
         recommendations = recommendations[:5]
 
+        # Funnel diagnosis is descriptive: without historical or external benchmarks,
+        # do not claim that a conversion rate is objectively poor.
+        funnel = []
+        if shows > 0:
+            view_rate_value = views / shows * 100
+            if shows < 100 or views < 20:
+                status, kind = "Мало данных", "warn"
+                action_title = "Накопить данные"
+                action_text = "Проверьте релевантность показов и соберите больше статистики. Не меняйте сразу несколько элементов."
+            elif view_rate_value < 5:
+                status, kind = "Проверить", "warn"
+                action_title = "Проверить привлекательность объявления"
+                action_text = "Сопоставьте заголовок, главное фото, цену и географию. Это диагностический ориентир, не универсальная норма."
+            else:
+                status, kind = "Наблюдать", ""
+                action_title = "Сравнить с собственной историей"
+                action_text = "Проверьте динамику конверсии на сопоставимых периодах и сегментах."
+            funnel.append({"name":"Показы → просмотры","rate":f"{view_rate_value:.2f}%".replace(".",","),
+                "input":integer(shows),"output":integer(views),"status":status,"kind":kind,
+                "action_title":action_title,"action_text":action_text})
+        if views > 0:
+            contact_rate_value = contacts / views * 100
+            if views < 100 or contacts < 3:
+                status, kind = "Мало данных", "warn"
+                action_title = "Накопить данные"
+                action_text = "Не делайте вывод по единичным контактам. Проверьте условия предложения и дождитесь более надёжной выборки."
+            elif contact_rate_value < 1:
+                status, kind = "Проверить", "warn"
+                action_title = "Проверить конверсию в контакт"
+                action_text = "Проверьте цену, соответствие предложения спросу, полноту описания, фотографии и условия покупки. Сначала выберите одну гипотезу для проверки."
+            else:
+                status, kind = "Наблюдать", ""
+                action_title = "Сравнить с аналогами"
+                action_text = "Сравните с собственной историей и похожими категориями/городами; сама по себе конверсия не доказывает эффективность."
+            funnel.append({"name":"Просмотры → контакты","rate":f"{contact_rate_value:.2f}%".replace(".",","),
+                "input":integer(views),"output":integer(contacts),"status":status,"kind":kind,
+                "action_title":action_title,"action_text":action_text})
+        if not funnel:
+            funnel.append({"name":"Воронка","rate":"—","input":"—","output":"—","status":"Нет данных","kind":"warn",
+                "action_title":"Проверьте выгрузку","action_text":"Для расчёта нужны показы, просмотры и контакты."})
+
         kpis = {"shows":integer(shows),"views":integer(views),"contacts":integer(contacts),
                 "spend":money(spend),"view_rate":f"{view_rate:.2f}%".replace(".",","),
                 "contact_rate":f"{contact_rate:.2f}%".replace(".",","),
                 "cpa":money(cpa) if contacts else "—"}
-        return render_template_string(PAGE, has_data=True, error=None, kpis=kpis,
+        return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
             categories=categories, rows=rows)
     except Exception as exc:
