@@ -260,12 +260,16 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
        const cpa=g.contacts?Math.round(g.spend/g.contacts).toLocaleString('ru-RU')+' ₽':'—';
        if(type==='city'){
          const rate=g.views?g.contacts/g.views*100:0;
-         const noContactShare=g.ads?g.noContacts/g.ads*100:0;
-         [g.name,Math.round(g.ads).toLocaleString('ru-RU'),Math.round(g.shows).toLocaleString('ru-RU'),
-          Math.round(g.views).toLocaleString('ru-RU'),
+         const signal = g.contacts===0 && g.views>=100 && g.spend>0
+           ? 'Проверить расходы: есть просмотры, нет контактов'
+           : (g.contacts<5 || g.views<300)
+             ? 'Мало данных — продолжить тест'
+             : 'Наблюдать; сравнить одинаковые категории';
+         [g.name,Math.round(g.views).toLocaleString('ru-RU'),
+          Math.round(g.contacts).toLocaleString('ru-RU'),
           g.views?rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%':'—',
-          Math.round(g.contacts).toLocaleString('ru-RU'),Math.round(g.spend).toLocaleString('ru-RU')+' ₽',
-          cpa,noContactShare.toLocaleString('ru-RU',{maximumFractionDigits:1})+'%']
+          Math.round(g.spend).toLocaleString('ru-RU')+' ₽',
+          cpa,signal]
           .forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
        } else {
          const rate=g.views?g.contacts/g.views*100:0;
