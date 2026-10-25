@@ -123,13 +123,21 @@ class HistoryStore:
                 (account, source_hash),
             ).fetchone()
             if existing:
+                # Allow users to add missing period metadata when re-uploading the same file.
+                updated_start = existing["report_start"] or _text(report_start)
+                updated_end = existing["report_end"] or _text(report_end)
+                if updated_start != existing["report_start"] or updated_end != existing["report_end"]:
+                    conn.execute(
+                        "UPDATE snapshots SET report_start=?, report_end=? WHERE id=?",
+                        (updated_start, updated_end, existing["id"]),
+                    )
                 return {
                     "snapshot_id": existing["id"],
                     "created": False,
                     "captured_at": existing["captured_at"],
                     "row_count": existing["row_count"],
-                    "report_start": existing["report_start"],
-                    "report_end": existing["report_end"],
+                    "report_start": updated_start,
+                    "report_end": updated_end,
                     "source_hash": source_hash,
                 }
             cursor = conn.execute(
