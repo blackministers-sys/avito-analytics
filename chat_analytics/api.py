@@ -3,6 +3,9 @@ import hmac
 import os
 
 from flask import Blueprint, jsonify, request
+from hashlib import sha256
+
+from .store import ChatStore
 
 from .avito_client import AvitoAPIError
 from .report import build_period_report
@@ -73,3 +76,85 @@ def chat_analyzer_home():
     };
     </script></main></html>"""
     return render_template_string(page)
+
+
+@chat_api.post("/api/chat-analyzer/import")
+def import_browser_chats():
+    """Accept an explicit user-initiated export from the Avito browser extension."""
+    if not authorized(request.headers.get("X-Chat-Analyzer-Key")):
+        return jsonify({"error": "Доступ не настроен или ключ неверный."}), 401
+    if request.content_length and request.content_length > 20 * 1024 * 1024:
+        return jsonify({"error": "Размер выгрузки превышает 20 МБ."}), 413
+    body = request.get_json(silent=True) or {}
+    account_id = str(body.get("account_id") or "").strip()
+    date_from, date_to = body.get("date_from"), body.get("date_to")
+    conversations = body.get("conversations")
+    if not account_id or len(account_id) > 100:
+        return jsonify({"error": "Не указан корректный ID аккаунта."}), 400
+    if not date_from or not date_to:
+        return jsonify({"error": "Укажи начало и окончание периода."}), 400
+    if not isinstance(conversations, list) or len(conversations) > 1000:
+        return jsonify({"error": "Некорректный список диалогов или превышен лимит 1000 диалогов."}), 400
+    store = ChatStore()
+    chats_saved = messages_saved = messages_received = 0
+    failed = []
+    for chat in conversations:
+        if not isinstance(chat, dict):
+            continue
+        chat_id = str(chat.get("id") or "").strip()
+        if not chat_id or len(chat_id) > 500:
+            failed.append({"chat_id": None, "error": "Диалог без корректного идентификатора."})
+            continue
+        store.save_chat(account_id, {
+            "id": chat_id,
+            "title": str(chat.get("title") or "")[:500],
+            "source": "visible_ui",
+        })
+        chats_saved += 1
+        messages = chat.get("messages") if isinstance(chat.get("messages"), list) else []
+        for index, message in enumerate(messages):
+            if not isinstance(message, dict):
+                continue
+            messages_received += 1
+            if messages_received > 100000:
+                return jsonify({"error": "Превышен лимит 100000 сообщений. Разбей выгрузку на части."}), 413
+            text = str(message.get("text") or "").strip()
+            created = message.get("created")
+            sender = message.get("sender_type")
+            if sender not in ("customer", "seller", "unknown"):
+                sender = "unknown"
+            message_id = str(message.get("id") or "").strip()
+            if not message_id:
+                digest = sha256(f"{chat_id}|{created}|{sender}|{text}|{index}".encode("utf-8")).hexdigest()
+                message_id = "ui:" + digest
+            normalized = {
+                "id": message_id[:255],
+                "created": created if isinstance(created, (str, int, float)) else "",
+                "text": text[:10000],
+                "sender_type": sender,
+                "source": "visible_ui",
+            }
+            if store.save_message(account_id, chat_id, normalized):
+                messages_saved += 1
+    collection = body.get("collection") if isinstance(body.get("collection"), dict) else {}
+    failed.extend(body.get("failures") if isinstance(body.get("failures"), list) else [])
+    status = "partial" if failed else "ok"
+    store.record_sync(account_id, chats_saved, messages_saved, status)
+    try:
+        report = build_period_report(account_id, str(date_from), str(date_to), store=store)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({
+        "import": {
+            "account_id": account_id,
+            "chats_received": len(conversations),
+            "chats_saved": chats_saved,
+            "messages_received": messages_received,
+            "new_messages_saved": messages_saved,
+            "failed_chats_count": len(failed),
+            "failed_chats": failed[:50],
+            "sync_status": status,
+            "collection": collection,
+        },
+        "report": report,
+    }), 200
