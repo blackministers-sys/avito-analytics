@@ -1,31 +1,47 @@
 # Avito Chat Analyzer — MVP
 
 ## Product goal
-
 Provide a standalone workspace for collecting and analyzing Avito conversations across multiple accounts, including accounts without Messenger API entitlement where a user-authorized browser export is available. Chat analysis must not depend on Client ID, Client Secret or OAuth tokens.
 
 ## Agreed collection strategy: hybrid
 
 Use two independent ingestion paths that produce the same normalized message format:
 
-1. **Browser-assisted export (primary fallback):** the user opens Avito in their normal browser session and explicitly starts an export for the selected account, chats and date range. The first MVP may accept a JSON export from an existing exporter; after its format is inspected, build our own browser extension only if needed.
+1. **Browser-assisted export:** explicit user-initiated export from content visible in the normal Avito interface. The first implementation is a deliberately limited Chrome extension prototype that exports only text explicitly selected by the user.
 2. **Official Messenger API (optional):** use it for accounts whose category/subscription and authorization permit access. Do not require this route for every account.
 
 The browser-assisted path must use only content the signed-in user can access in the normal Avito interface and explicit user action. Do not extract passwords, cookies, session tokens or hidden credentials; do not call undocumented private endpoints, bypass access controls, or automate sending/deleting/reading messages. Respect Avito terms and applicable privacy requirements. If compliant collection from the rendered interface is not technically or contractually available, use a user-generated export/import instead.
+
+## Chrome extension prototype — v0.1.0
+
+Location: `browser-extension/` on branch `feature/chat-analyzer-mvp`.
+
+Implemented:
+- Chrome Manifest V3 popup with account label and optional date range.
+- User explicitly selects visible chat text and presses the export button.
+- Extension reads only `window.getSelection()` from the active Avito tab.
+- Generates a versioned JSON file locally.
+- No cookies, passwords, tokens, internal endpoints, background polling, message actions or server upload.
+
+Known limitations:
+- It exports only the selected text, not all chats or full conversation history.
+- It does not reliably split messages, identify authors or recover timestamps.
+- It does not upload to the server; this is a local prototype and has not been tested against a live Avito chat.
+- The JSON schema is provisional and must be reconciled with a real, sanitized sample before implementing a robust importer.
 
 ## Important operating limitation
 
 A browser export requires an active browser session and the user's computer at export time. It cannot continuously sync while the computer is off. After import, storage and analytics run on the server independently. Background incremental updates while the computer is off are possible only through an authorized server-side source (for example, official API/webhooks where available). Otherwise the user repeats the export periodically.
 
-## User workflow
+## User workflow — current prototype
 
-1. Add an internal account record with a display name; no API credentials are required for a browser-import account.
-2. Open the corresponding Avito account in the browser.
-3. Select chats/date range and explicitly export accessible conversation data.
-4. Upload the export to the server (or send it from an authenticated browser extension to an authenticated upload endpoint).
-5. Normalize, deduplicate and store chats/messages under the internal account ID.
-6. Analyze the imported history, browse chats and export reports.
-7. Repeat export when new data is needed, unless official API sync is available.
+1. Install the unpacked extension from `browser-extension/` using `chrome://extensions` and Developer mode.
+2. Open the relevant Avito conversation in the normal browser session.
+3. Select the visible message text manually.
+4. Open the extension, enter an account label and optional date range, then generate JSON.
+5. Inspect and sanitize the JSON before sharing it for schema validation.
+
+The future workflow may add structured message parsing and authenticated upload only after the rendered UI structure, attribution accuracy, privacy requirements and Avito rules have been checked.
 
 ## Architecture
 
@@ -58,13 +74,14 @@ Every inferred reason must be labelled as a text signal, not a confirmed lost sa
 
 ## Known implementation state
 
-The repository already contains a read-only client based on Client Credentials, a SQLite chat/message store, an initial full-sync service and an analyzer for manually uploaded exports. These are scaffolding only: OAuth multi-account lifecycle is not implemented; the current sync service is a one-account initial backfill; the Flask app has no Chat Analyzer UI or account switcher; the browser-export JSON format has not yet been inspected; no browser extension has been implemented or reviewed for Avito terms/compliance; Render persistent storage and background worker/scheduler are not configured or verified.
+The repository contains a read-only client based on Client Credentials, a SQLite chat/message store, an initial full-sync service and an analyzer for manually uploaded exports. The Chrome extension v0.1.0 now exists as a local-selection export prototype. OAuth multi-account lifecycle is not implemented; the current sync service is a one-account initial backfill; the Flask app has no Chat Analyzer UI or account switcher; extension output has not been validated against real chat data; Render persistent storage and background worker/scheduler are not configured or verified. No production deployment has been performed for this prototype.
 
 ## Delivery order
 
-1. Obtain a sanitized sample JSON from the existing browser exporter and document its schema.
-2. Implement and test a secure JSON import adapter, internal account registry and idempotent normalization.
-3. Add import UI, chat list/detail and analysis for imported data.
-4. Decide whether a custom browser extension is needed; if so, limit it to explicit user-initiated collection of user-visible authorized content and verify compliance before release.
-5. Keep official API integration as an optional connector for accounts with entitlement.
-6. Deploy with persistent storage and verify imports with two separate Avito accounts.
+1. Install and test the local extension on one Avito account with a non-sensitive test conversation.
+2. Review the generated JSON and define the normalized schema using a sanitized real sample.
+3. Implement and test a secure JSON import adapter, internal account registry and idempotent normalization.
+4. Add import UI, chat list/detail and analysis for imported data.
+5. Decide whether structured browser extraction is feasible and compliant; if so, validate DOM selectors and sender/timestamp attribution before implementation.
+6. Keep official API integration as an optional connector for accounts with entitlement.
+7. Deploy with persistent storage and verify imports with two separate Avito accounts.
