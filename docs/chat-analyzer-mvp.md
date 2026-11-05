@@ -118,3 +118,8 @@ Automatic all-chat collection is not yet delivered. The installed Chrome extensi
 ### Date-scoped API sync foundation — 2026-11-05
 
 The read-only sync service now accepts optional date_from/date_to bounds, supports ISO timestamps and Unix seconds/milliseconds in API message records, applies an inclusive calendar-date range, and returns counts for fetched, stored, out-of-range and unknown-timestamp messages. When a date filter is active, messages with unknown timestamps are excluded rather than guessed. Important limitation: the current API still enumerates chats and fetches each chat's message pages before filtering locally; server-side date-range query optimization has not been verified. Added unit tests for period parsing and timestamp handling in tests/test_chat_sync_period.py. CI execution has not yet been observed.
+
+
+### Verification — 2026-11-05
+
+GitHub Actions run 72 for commit bf4dd76 completed successfully. The job `test-data-validation` passed, including the Python test step and the JavaScript filters/sorting test step. This confirms the repository test workflow passed for the normalization and date-filtering changes present at that commit. The subsequent documentation-only commits do not change runtime code.
