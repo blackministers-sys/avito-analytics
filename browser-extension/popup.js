@@ -41,7 +41,6 @@ byId("inspect").addEventListener("click", async () => {
               role_present: el.hasAttribute("role"),
               aria_label_present: el.hasAttribute("aria-label"),
               data_attribute_names: [...el.attributes].map(a => a.name).filter(n => n.startsWith("data-")).slice(0, 12),
-              text_length: (el.innerText || "").trim().length,
               child_count: el.children.length,
               depth: (() => { let d=0,n=el; while(n.parentElement && d<20){d++;n=n.parentElement;} return d; })(),
               rect: { x: Math.round(r.x), y: Math.round(r.y), width: Math.round(r.width), height: Math.round(r.height) }
