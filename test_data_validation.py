@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from data_validation import validate_export
+from data_validation import validate_export, select_identity_columns
 
 
 class ValidateExportTests(unittest.TestCase):
@@ -21,6 +21,33 @@ class ValidateExportTests(unittest.TestCase):
         report = validate_export(frame)
         self.assertEqual(report["status"], "breakdowns_only")
         self.assertIn("уникальность строк не подтверждена", report["summary"])
+
+    def test_identity_selection_prefers_ad_id_over_title(self):
+        frame = pd.DataFrame({
+            "Номер объявления": ["8102416562", "8102416562"],
+            "Название объявления": ["Старая версия", "Новое название"],
+            "Показы": [100, 120],
+        })
+        identity = select_identity_columns(frame)
+        self.assertEqual(identity, ["Номер объявления"])
+        report = validate_export(
+            frame,
+            metric_columns={"Показы": "Показы"},
+            identity_columns=identity,
+        )
+        self.assertEqual(report["identity_duplicate_rows"], 1)
+        self.assertEqual(report["status"], "needs_review")
+
+    def test_identity_selection_uses_fallback_when_ids_are_incomplete(self):
+        frame = pd.DataFrame({
+            "Номер объявления": ["8102416562", ""],
+            "Название объявления": ["Цепь", "Браслет"],
+            "Город": ["СПб", "СПб"],
+        })
+        self.assertEqual(
+            select_identity_columns(frame),
+            ["Название объявления", "Город"],
+        )
 
     def test_exact_duplicates_are_reported_not_deleted(self):
         frame = pd.DataFrame({
