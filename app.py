@@ -166,7 +166,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><label class="muted small">Период отчёта с <input type="date" name="report_start" aria-label="Начало периода отчёта"></label><label class="muted small">по <input type="date" name="report_end" aria-label="Конец периода отчёта"></label><button type="submit">Анализировать</button></form></section>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if has_data %}
-<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период отчёта — метка выгрузки; он не фильтрует данные внутри файла</div></section>
+<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период отчёта — диапазон, указанный или распознанный по имени файла</div></section>
 {% if history_result is defined %}
 <section class="panel" style="margin-top:12px;border-color:#35685a">
 <h2>Результат сохранения истории</h2>
@@ -716,16 +716,16 @@ def history():
     </style>
     <h1>История статистики</h1><p><a href="/">← Вернуться к загрузке</a></p>
     <p class="muted">Аккаунт: {{ account }}. Повторная загрузка идентичного файла не создаёт новый снимок.</p>
-    <div class="panel"><strong>Важно о точности сравнения</strong><p class="muted">Сейчас приложение сохраняет дату загрузки, но не определяет автоматически период статистики внутри файла. Поэтому два снимка сравниваются по времени загрузки, а не по подтверждённым непересекающимся периодам. Если выгрузки содержат накопительные значения или разные диапазоны дат, разница не показывает изменение эффективности за период. Используйте её только как предварительную проверку; следующий этап — распознавание периода и корректное сравнение сопоставимых интервалов.</p></div>
+    <div class="panel"><strong>Правила сравнения периодов</strong><p class="muted">Период берётся из дат, указанных при загрузке, или распознаётся из имени файла в формате «с ГГГГ-ММ-ДД по ГГГГ-ММ-ДД». Система сравнивает только непересекающиеся интервалы одинаковой длительности. Повторный отчёт за тот же период, пересечение дат, разные длительности или отсутствие периода не выдаются за динамику.</p></div>
     <div class="panel"><h2>Последние снимки</h2>
     {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата загрузки</th><th>Файл</th><th>Период отчёта</th><th>Строк</th><th>Данные</th></tr></thead><tbody>
     {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{% if s.report_start or s.report_end %}{{s.report_start or "…"}} — {{s.report_end or "…"}}{% else %}<span class="muted">Не указан</span>{% endif %}</td><td>{{s.row_count}}</td><td><a href="/history/{{s.id}}">Открыть данные →</a></td></tr>{% endfor %}
     </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
-    <div class="panel"><h2>Предварительное сравнение двух последних снимков</h2>
+    <div class="panel"><h2>Сравнение двух последних отчётов</h2>
     {% if comparison.available %}
       <p>Загрузки: {{comparison.older_captured_at}} → {{comparison.newer_captured_at}}</p>
       <p>Периоды отчётов: {% if comparison.older_report_start or comparison.older_report_end %}{{comparison.older_report_start or "…"}} — {{comparison.older_report_end or "…"}}{% else %}не указаны{% endif %} → {% if comparison.newer_report_start or comparison.newer_report_end %}{{comparison.newer_report_start or "…"}} — {{comparison.newer_report_end or "…"}}{% else %}не указаны{% endif %}</p>
-      <p>Изменения строк: {{comparison.changes|length}}</p>
+      <p>Длительность каждого периода: {{comparison.period_days}} дн. · Изменений строк: {{comparison.changes|length}}</p>
       <p class="muted">{{comparison.note}}</p>
       <table><thead><tr><th>Объявление</th><th>Статус</th><th>Просмотры</th><th>Контакты</th><th>Расходы</th><th>Избранное</th></tr></thead><tbody>
       {% for x in comparison.changes %}
