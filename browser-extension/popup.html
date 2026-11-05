@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Avito Chat Analyzer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="mark">AC</div>
+      <div><h1>Chat Analyzer</h1><p>Экспорт переписки Avito</p></div>
+    </header>
+    <label>Название аккаунта
+      <input id="account" maxlength="80" placeholder="Например: Магазин СПб">
+    </label>
+    <div class="dates">
+      <label>Период с<input id="dateFrom" type="date"></label>
+      <label>по<input id="dateTo" type="date"></label>
+    </div>
+    <div class="notice"><strong>Как это работает</strong><p>Открой чат Avito, выдели мышью нужный текст сообщений и нажми «Сформировать JSON». Расширение сохранит только выделенный текст.</p></div>
+    <button id="export">Сформировать JSON</button>
+    <p id="status" role="status">Данные не отправляются на сервер.</p>
+    <footer>v0.1.0 · локальный экспорт · без доступа к cookies и токенам</footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
