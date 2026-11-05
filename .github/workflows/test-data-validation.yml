@@ -3,6 +3,7 @@ name: Data validation tests
 on:
   push:
     branches:
+      - main
       - audit/data-validation
   pull_request:
     branches:
@@ -21,7 +22,7 @@ jobs:
       - name: Install test dependency
         run: python -m pip install "pandas>=2.0,<3.0" "openpyxl>=3.1,<4.0" "Flask>=3.0,<4.0"
       - name: Run validation tests
-        run: python -m unittest test_data_validation.py test_excel_import.py test_app_headers.py
+        run: python -m unittest test_data_validation.py test_excel_import.py test_history_store.py test_app_headers.py
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
