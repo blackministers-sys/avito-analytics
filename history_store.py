@@ -9,7 +9,8 @@ import hashlib
 import json
 import os
 import sqlite3
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -36,6 +37,44 @@ def _json_value(value: Any) -> Any:
 def _text(value: Any) -> str:
     value = _json_value(value)
     return "" if value is None else str(value).strip()
+
+
+def infer_report_period(source_filename: str) -> tuple[str, str]:
+    """Infer a report period only from an explicit YYYY-MM-DD range in its filename."""
+    name = _text(source_filename)
+    patterns = [
+        r"с[_ ](\\d{4}-\\d{2}-\\d{2})[_ ]по[_ ](\\d{4}-\\d{2}-\\d{2})",
+        r"(\\d{4}-\\d{2}-\\d{2})[_ ]по[_ ](\\d{4}-\\d{2}-\\d{2})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, name, flags=re.IGNORECASE)
+        if match:
+            start, end = match.groups()
+            try:
+                date.fromisoformat(start)
+                date.fromisoformat(end)
+            except ValueError:
+                return "", ""
+            if start <= end:
+                return start, end
+    return "", ""
+
+
+def _validated_period(report_start: str, report_end: str) -> tuple[str, str]:
+    start, end = _text(report_start), _text(report_end)
+    if bool(start) != bool(end):
+        raise ValueError("Укажите обе даты периода отчёта или оставьте обе пустыми.")
+    if not start:
+        return "", ""
+    try:
+        parsed_start, parsed_end = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError as exc:
+        raise ValueError("Даты периода должны быть в формате ГГГГ-ММ-ДД.") from exc
+    if parsed_start.isoformat() != start or parsed_end.isoformat() != end:
+        raise ValueError("Даты периода должны быть в формате ГГГГ-ММ-ДД.")
+    if parsed_start > parsed_end:
+        raise ValueError("Начало периода не может быть позже окончания.")
+    return start, end
 
 
 class HistoryStore:
@@ -116,6 +155,9 @@ class HistoryStore:
         account = _text(account) or "default"
         source_hash = self.fingerprint(source_bytes)
         timestamp = captured_at or datetime.now(timezone.utc).isoformat(timespec="seconds")
+        report_start, report_end = _validated_period(report_start, report_end)
+        if not report_start and not report_end:
+            report_start, report_end = infer_report_period(source_filename)
         rows = list(rows)
         with self._connect() as conn:
             existing = conn.execute(
@@ -210,11 +252,30 @@ class HistoryStore:
         return result
 
     def compare_latest(self, account: str = "default") -> dict[str, Any]:
-        """Compare the two latest snapshots by stable listing key, without claiming causation."""
+        """Compare only two non-overlapping, equal-duration, dated report periods."""
         snapshots = self.list_snapshots(account=account, limit=2)
         if len(snapshots) < 2:
             return {"available": False, "reason": "Для сравнения нужны минимум две разные выгрузки.", "changes": []}
         newer, older = snapshots[0], snapshots[1]
+        older_start, older_end = older.get("report_start", ""), older.get("report_end", "")
+        newer_start, newer_end = newer.get("report_start", ""), newer.get("report_end", "")
+        if not all((older_start, older_end, newer_start, newer_end)):
+            return {"available": False, "reason": "Не указан период одной или обеих выгрузок. Приложение не будет сравнивать статистику по датам загрузки. Укажите даты вручную или используйте файл с диапазоном дат в названии.", "changes": []}
+        try:
+            os_, oe = date.fromisoformat(older_start), date.fromisoformat(older_end)
+            ns, ne = date.fromisoformat(newer_start), date.fromisoformat(newer_end)
+        except ValueError:
+            return {"available": False, "reason": "В истории найдены некорректные даты периода. Перезагрузите файл с корректным диапазоном.", "changes": []}
+        older_days = (oe - os_).days + 1
+        newer_days = (ne - ns).days + 1
+        if os_ == ns and oe == ne:
+            return {"available": False, "reason": "Обе выгрузки относятся к одному и тому же периоду. Это повторный или обновлённый отчёт, а не динамика между периодами.", "comparison_status": "same_period", "changes": []}
+        if ns <= oe and os_ <= ne:
+            return {"available": False, "reason": "Периоды пересекаются. Сравнение сумм может задвоить дни и дать ложную динамику. Загрузите непересекающиеся интервалы.", "comparison_status": "overlap", "changes": []}
+        if newer_days != older_days:
+            return {"available": False, "reason": f"Длительность периодов различается: {older_days} и {newer_days} дн. Для корректного сравнения сначала нужны интервалы одинаковой длительности.", "comparison_status": "unequal_duration", "changes": []}
+        if ns <= os_:
+            return {"available": False, "reason": "Более поздняя загрузка содержит более ранний период отчёта. Проверьте порядок и даты файлов.", "comparison_status": "out_of_order", "changes": []}
         new_data = self.get_snapshot(newer["id"])["observations"]
         old_data = self.get_snapshot(older["id"])["observations"]
         old_by_key: dict[str, dict[str, Any]] = {}
@@ -224,36 +285,25 @@ class HistoryStore:
         for row in new_data:
             previous = old_by_key.get(row["listing_key"])
             if previous is None:
-                changes.append({
-                    "listing_key": row["listing_key"], "title": row["title"] or row["listing_key"],
-                    "status": "new", "previous": None, "current": row,
-                })
+                changes.append({"listing_key": row["listing_key"], "title": row["title"] or row["listing_key"], "status": "new", "previous": None, "current": row})
                 continue
             metrics = {}
             for field in ("shows", "views", "contacts", "spend", "favorites"):
                 before, after = float(previous[field]), float(row[field])
                 metrics[field] = {"before": before, "after": after, "delta": after - before}
-            changes.append({
-                "listing_key": row["listing_key"], "title": row["title"] or row["listing_key"],
-                "status": "existing", "previous": previous, "current": row, "metrics": metrics,
-            })
+            changes.append({"listing_key": row["listing_key"], "title": row["title"] or row["listing_key"], "status": "existing", "previous": previous, "current": row, "metrics": metrics})
         current_keys = {row["listing_key"] for row in new_data}
         for row in old_data:
             if row["listing_key"] not in current_keys:
-                changes.append({
-                    "listing_key": row["listing_key"], "title": row["title"] or row["listing_key"],
-                    "status": "missing", "previous": row, "current": None,
-                })
+                changes.append({"listing_key": row["listing_key"], "title": row["title"] or row["listing_key"], "status": "missing", "previous": row, "current": None})
         return {
             "available": True,
-            "older_snapshot_id": older["id"],
-            "newer_snapshot_id": newer["id"],
-            "older_captured_at": older["captured_at"],
-            "newer_captured_at": newer["captured_at"],
-            "older_report_start": older.get("report_start", ""),
-            "older_report_end": older.get("report_end", ""),
-            "newer_report_start": newer.get("report_start", ""),
-            "newer_report_end": newer.get("report_end", ""),
+            "comparison_status": "comparable",
+            "older_snapshot_id": older["id"], "newer_snapshot_id": newer["id"],
+            "older_captured_at": older["captured_at"], "newer_captured_at": newer["captured_at"],
+            "older_report_start": older_start, "older_report_end": older_end,
+            "newer_report_start": newer_start, "newer_report_end": newer_end,
+            "period_days": older_days,
             "changes": changes,
-            "note": "Разница между выгрузками сама по себе не доказывает причинный эффект изменений.",
+            "note": "Сравниваются непересекающиеся периоды одинаковой длительности. Разница сама по себе не доказывает причинный эффект изменений.",
         }
