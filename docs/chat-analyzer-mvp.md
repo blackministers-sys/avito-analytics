@@ -113,3 +113,8 @@ Added chat_analytics/normalization.py with schema version 1.0. It maps explicit 
 ### Current product truth
 
 Automatic all-chat collection is not yet delivered. The installed Chrome extension remains v0.1.0 and only exports manually selected text. The new normalization layer is a backend foundation, not an end-to-end collector. No production deployment or merge to main has been made.
+
+
+### Date-scoped API sync foundation — 2026-11-05
+
+The read-only sync service now accepts optional date_from/date_to bounds, supports ISO timestamps and Unix seconds/milliseconds in API message records, applies an inclusive calendar-date range, and returns counts for fetched, stored, out-of-range and unknown-timestamp messages. When a date filter is active, messages with unknown timestamps are excluded rather than guessed. Important limitation: the current API still enumerates chats and fetches each chat's message pages before filtering locally; server-side date-range query optimization has not been verified. Added unit tests for period parsing and timestamp handling in tests/test_chat_sync_period.py. CI execution has not yet been observed.
