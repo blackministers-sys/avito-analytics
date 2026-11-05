@@ -24,8 +24,12 @@ def _message_text(message: dict) -> str:
 
 
 def _sender(message: dict, account_user_id: str) -> str:
-    # Only use explicit author identifiers. Do not infer direction from message
-    # wording, bubble order, delivery ticks or participant names.
+    # Browser imports may carry an explicit role inferred from the visible UI.
+    # Accept only the closed vocabulary; never infer from wording or bubble order.
+    role = message.get("sender_type")
+    if role in {"customer", "seller", "unknown"}:
+        return role
+    # Official API messages use explicit author identifiers.
     author = message.get("author_id")
     if author is None:
         author = message.get("user_id")
@@ -128,6 +132,6 @@ def build_period_report(
             "В отчёт включены сообщения с распознанным временем внутри выбранного периода.",
             "Неизвестный автор не угадывается и учитывается отдельно.",
             "Отсутствие ответа или тишина не считаются доказанной потерей продажи.",
-            "Результат зависит от полноты доступной истории Messenger API.",
+            "Результат зависит от полноты доступной истории источника.",
         ],
     }
