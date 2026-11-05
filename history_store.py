@@ -43,8 +43,8 @@ def infer_report_period(source_filename: str) -> tuple[str, str]:
     """Infer a report period only from an explicit YYYY-MM-DD range in its filename."""
     name = _text(source_filename)
     patterns = [
-        r"с[_ ](\\d{4}-\\d{2}-\\d{2})[_ ]по[_ ](\\d{4}-\\d{2}-\\d{2})",
-        r"(\\d{4}-\\d{2}-\\d{2})[_ ]по[_ ](\\d{4}-\\d{2}-\\d{2})",
+        r"с[_ ](\d{4}-\d{2}-\d{2})[_ ]по[_ ](\d{4}-\d{2}-\d{2})",
+        r"(\d{4}-\d{2}-\d{2})[_ ]по[_ ](\d{4}-\d{2}-\d{2})",
     ]
     for pattern in patterns:
         match = re.search(pattern, name, flags=re.IGNORECASE)
