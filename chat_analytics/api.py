@@ -9,7 +9,7 @@ from .store import ChatStore
 
 from .avito_client import AvitoAPIError
 from .report import build_period_report
-from .sync_service import sync_account
+from .sync_service import sync_account, _parse_bound
 
 chat_api = Blueprint("chat_api", __name__)
 
@@ -93,6 +93,13 @@ def import_browser_chats():
         return jsonify({"error": "Не указан корректный ID аккаунта."}), 400
     if not date_from or not date_to:
         return jsonify({"error": "Укажи начало и окончание периода."}), 400
+    try:
+        start = _parse_bound(date_from)
+        end_exclusive = _parse_bound(date_to, end=True)
+        if start is None or end_exclusive is None or start >= end_exclusive:
+            raise ValueError("Укажи корректный период: дата начала не позже даты окончания.")
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 400
     if not isinstance(conversations, list) or len(conversations) > 1000:
         return jsonify({"error": "Некорректный список диалогов или превышен лимит 1000 диалогов."}), 400
     store = ChatStore()
@@ -137,13 +144,18 @@ def import_browser_chats():
             if store.save_message(account_id, chat_id, normalized):
                 messages_saved += 1
     collection = body.get("collection") if isinstance(body.get("collection"), dict) else {}
-    failed.extend(body.get("failures") if isinstance(body.get("failures"), list) else [])
+    raw_failures = body.get("failures") if isinstance(body.get("failures"), list) else []
+    for item in raw_failures[:100]:
+        if isinstance(item, dict):
+            failed.append({
+                "chat_id": str(item.get("chat_id") or "")[:500] or None,
+                "error": str(item.get("error") or "Ошибка сбора")[:240],
+            })
+        else:
+            failed.append({"chat_id": None, "error": str(item)[:240]})
     status = "partial" if failed else "ok"
     store.record_sync(account_id, chats_saved, messages_saved, status)
-    try:
-        report = build_period_report(account_id, str(date_from), str(date_to), store=store)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+    report = build_period_report(account_id, str(date_from), str(date_to), store=store)
     return jsonify({
         "import": {
             "account_id": account_id,
