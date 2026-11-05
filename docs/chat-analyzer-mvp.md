@@ -147,3 +147,52 @@ Implemented in feature/chat-analyzer-mvp:
 - tests/test_chat_report.py added. CI for report and full-history sync changes passed (workflow run 85); run 86 is checking Flask registration/API changes.
 
 Important constraints before production: the official API entitlement and credentials are not verified for the LEONA account; current collector uses the repository's existing Messenger endpoint assumptions and must be tested against a real authorized account. The request runs synchronously, so large accounts may exceed web-worker timeouts; a persistent background job worker is a later reliability requirement. The extension v0.2.0 is diagnostic only and is not the official API workflow. No merge to main or deploy has been made.
+
+
+## Confirmed product UX and next implementation — 2026-11-05
+
+The user confirmed the final Chat Analyzer workflow:
+
+1. Open the Chrome extension while on Avito.
+2. Select the Avito account.
+3. Select a date interval.
+4. Click **«Выгрузить чаты»**.
+5. The extension automatically traverses the accessible conversation list and collects messages whose message timestamps fall inside the selected interval.
+6. The extension sends the collected data to the authenticated server ingestion endpoint.
+7. The normalized data feeds the analytics module and the user receives a report.
+
+The selected interval applies to message timestamps, not conversation creation dates. Preserve the full accessible conversation context for each conversation that has at least one in-range message; calculate period metrics using only in-range messages unless a report metric explicitly requires broader context.
+
+The final extension popup must not expose a separate DOM diagnostic product or manual text-selection export. Its user-facing controls are account selection, date-from/date-to, one primary **«Выгрузить чаты»** action, progress, partial/full completion status and a link/open action for the report. Internal engineering diagnostics may be retained only as non-product development instrumentation.
+
+### Report scope
+
+- Conversations and messages in the selected period.
+- Conversations with a seller/manager reply and reply speed, only when sender and timestamps are reliably known.
+- Conversations with no confirmed conversion; do not label them definitively as lost sales without linked order/deal status.
+- Objection and refusal text signals.
+- Product/listing interest signals.
+- Likely funnel drop-off stages and manager communication issues, with supporting message evidence.
+- Per-conversation collection errors and coverage/completeness status.
+
+Inferred reasons for refusal, lost sale or manager error must be presented as hypotheses/text signals, not confirmed facts. Unknown sender, timestamp or conversion state must remain unknown rather than being guessed.
+
+### Collection architecture and constraints
+
+- Prefer the official read-only Messenger API for accounts with confirmed entitlement.
+- For accounts without API entitlement, investigate a user-initiated collector that traverses only content rendered and accessible in the ordinary signed-in Avito interface.
+- Do not read or transmit cookies, passwords, session tokens; do not call hidden undocumented endpoints or bypass access controls; do not send, delete or mark messages as read.
+- The browser collection requires an active Avito session and a running browser/computer during collection. After successful upload, server-side storage and analytics can continue independently.
+- Validate message boundaries, sender attribution, timestamps, pagination/lazy loading, duplicate handling and traversal completeness against a real authorized session before calling the UI collector reliable.
+- Preserve the existing normalized message contract and API collector; do not rebuild working backend modules without evidence they need changes.
+
+### Implementation order
+
+1. Replace the current diagnostic popup with the final minimal collection UI.
+2. Implement a content-script/UI-driven conversation-list traversal and message-history reader, using verified rendered-DOM selectors and explicit user initiation.
+3. Add bounded traversal, pagination/lazy-load completion checks, deduplication and per-chat error reporting.
+4. Reuse the existing normalized schema and authenticated server ingestion path.
+5. Connect ingestion completion to the existing report generator and display the report.
+6. Test on a real account with a small date range before expanding to a full account.
+
+This section supersedes the earlier manual-selection/diagnostic popup as the intended product UX. The existing safety, privacy, API-entitlement and deployment caveats remain in force.
