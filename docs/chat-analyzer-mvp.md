@@ -85,3 +85,31 @@ The repository contains a read-only client based on Client Credentials, a SQLite
 5. Decide whether structured browser extraction is feasible and compliant; if so, validate DOM selectors and sender/timestamp attribution before implementation.
 6. Keep official API integration as an optional connector for accounts with entitlement.
 7. Deploy with persistent storage and verify imports with two separate Avito accounts.
+
+
+## Automatic collection work — 2026-11-05
+
+The user's required workflow is now explicit: choose an account and date interval, start one operation, and have the system collect all accessible conversations/messages in that interval and produce an analysis report. Manual text selection is not an acceptable product workflow; v0.1.0 is only a proof of extension installation and local file generation.
+
+### Source feasibility
+
+- The existing chat_analytics/avito_client.py already contains read-only calls for account self, chat listing (Messenger v2) and message history (Messenger v3).
+- The official Messenger API is the most reliable automated source where the account has entitlement. The read operations are GET /messenger/v2/accounts/{user_id}/chats and GET /messenger/v3/accounts/{user_id}/chats/{chat_id}/messages/. Do not call write operations such as send, mark-read or delete.
+- API availability depends on the account's category/subscription and approved application access. Confirm entitlement per account before promising server-side automatic collection.
+- For accounts without API entitlement, a browser-assisted path remains an investigation, not an implemented capability. Before coding selectors, inspect the live rendered chat-list and chat-detail UI and validate message boundaries, sender attribution, timestamps, pagination, lazy loading and Avito terms. Never use private endpoints, cookies, tokens or access-control bypasses. If a compliant full-history UI export is not feasible, use a user-generated export/import.
+
+### Normalized message contract
+
+Added chat_analytics/normalization.py with schema version 1.0. It maps explicit source field paths into: internal account ID, conversation ID, message ID, UTC timestamp (or null), sender type (customer/seller/unknown), text, attachment metadata and source provenance. Unknown sender direction is preserved as unknown; numeric timestamps require source-specific explicit conversion. Tests are in tests/test_chat_normalization.py.
+
+### Next implementation steps
+
+1. Run CI/unit tests for the normalization contract.
+2. Extend the official API sync to accept a date interval, persist only matching messages while retaining idempotent message IDs, and report coverage/partial failures.
+3. Add a secure server-side account registry and authenticated sync trigger; secrets stay in server environment variables and never in the extension.
+4. Add report endpoints/UI for chat counts, message counts, reply latency (only when sender/time are known), unanswered inbound messages and text-based objection signals.
+5. Separately inspect a live Avito chat UI before deciding whether a compliant browser collector can replace manual selection for non-API accounts.
+
+### Current product truth
+
+Automatic all-chat collection is not yet delivered. The installed Chrome extension remains v0.1.0 and only exports manually selected text. The new normalization layer is a backend foundation, not an end-to-end collector. No production deployment or merge to main has been made.
