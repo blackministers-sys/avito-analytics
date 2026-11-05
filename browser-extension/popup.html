@@ -10,7 +10,7 @@
   <main>
     <header>
       <div class="mark">AC</div>
-      <div><h1>Chat Analyzer</h1><p>Экспорт переписки Avito</p></div>
+      <div><h1>Chat Analyzer</h1><p>Диагностика интерфейса Avito</p></div>
     </header>
     <label>Название аккаунта
       <input id="account" maxlength="80" placeholder="Например: Магазин СПб">
@@ -19,12 +19,12 @@
       <label>Период с<input id="dateFrom" type="date"></label>
       <label>по<input id="dateTo" type="date"></label>
     </div>
-    <div class="notice"><strong>Как это работает</strong><p>Открой чат Avito, выдели мышью нужный текст сообщений и нажми «Сформировать JSON». Расширение сохранит только выделенный текст.</p></div>
+    <div class="notice"><strong>Диагностика экранов</strong><p>Запусти проверку сначала на списке чатов, затем внутри открытого диалога. Сохраняется только структура видимых элементов без текста переписки.</p></div>
     <button id="inspect" class="secondary">Проверить структуру экрана</button>
     <p class="hint">Сделай проверку отдельно на списке чатов и внутри открытого диалога. Будет сохранена только структура видимых элементов, без текста сообщений и личных данных.</p>
     <button id="export">Сформировать JSON</button>
     <p id="status" role="status">Данные не отправляются на сервер.</p>
-    <footer>v0.1.0 · локальный экспорт · без доступа к cookies и токенам</footer>
+    <footer>v0.2.0 · локальная диагностика · без доступа к cookies и токенам</footer>
   </main>
   <script src="popup.js"></script>
 </body>
