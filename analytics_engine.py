@@ -106,18 +106,19 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
     eligible = frame[(frame["Показы"] >= 300) & (frame["Просмотры"] >= 50)].copy()
     for idx, row in frame.iterrows():
         own = _metrics(frame.loc[[idx]])
+        product_group = "Параметр" if "Параметр" in frame.columns else "Категория"
         peers = eligible[
-            (eligible["Категория"] == row.get("Категория", ""))
+            (eligible[product_group] == row.get(product_group, ""))
             & (eligible["Город"] == row.get("Город", ""))
             & (eligible.index != idx)
         ]
         scope = "город + категория"
         if len(peers) < 3:
             peers = eligible[
-                (eligible["Категория"] == row.get("Категория", ""))
+                (eligible[product_group] == row.get(product_group, ""))
                 & (eligible.index != idx)
             ]
-            scope = "категория, все города"
+            scope = "товарная категория, все города"
         if len(peers) < 3:
             peers = eligible[eligible.index != idx]
             scope = "вся выгрузка"
@@ -137,7 +138,8 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
 def diagnose_categories(frame: pd.DataFrame) -> list[dict]:
     """Diagnose each category against the median of its city cohorts."""
     output = []
-    for category, group in frame.groupby("Категория", dropna=False):
+    group_column = "Параметр" if "Параметр" in frame.columns else "Категория"
+    for category, group in frame.groupby(group_column, dropna=False):
         own = _metrics(group)
         city_metrics = []
         for _, city_group in group.groupby("Город", dropna=False):
