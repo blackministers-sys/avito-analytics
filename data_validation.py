@@ -43,6 +43,27 @@ def _parse_numeric(value: Any) -> tuple[float | None, bool]:
         return None, True
 
 
+def select_identity_columns(
+    frame: pd.DataFrame,
+    id_column: str = "Номер объявления",
+    fallback_columns: list[str] | None = None,
+) -> list[str]:
+    """Choose a stable observation key, preferring complete Avito ad IDs."""
+    df = frame.copy()
+    df.columns = [normalize_column_name(c) for c in df.columns]
+    id_column = normalize_column_name(id_column)
+    if id_column in df.columns:
+        ids = df[id_column].fillna("").astype(str).str.strip()
+        if len(ids) and ids.ne("").all():
+            return [id_column]
+    fallback_columns = fallback_columns or [
+        "Название объявления", "Город", "Категория",
+        "Подкатегория", "Параметр", "Цена",
+    ]
+    return [normalize_column_name(c) for c in fallback_columns
+            if normalize_column_name(c) in df.columns]
+
+
 def validate_export(
     frame: pd.DataFrame,
     metric_columns: dict[str, str] | None = None,
