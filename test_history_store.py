@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from history_store import HistoryStore
+from history_store import HistoryStore, infer_report_period
 
 
 class HistoryStoreTests(unittest.TestCase):
@@ -64,14 +64,16 @@ class HistoryStoreTests(unittest.TestCase):
         self.assertEqual(len(self.store.list_snapshots("jewelry")), 1)
         self.assertEqual(len(self.store.list_snapshots("auto")), 1)
 
-    def test_compare_two_snapshots_by_ad_number(self):
+    def test_compare_two_equal_non_overlapping_periods_by_ad_number(self):
         self.store.save_snapshot(
             [self.row(views=20, contacts=2, spend=100)],
-            b"older", captured_at="2026-10-24T10:00:00+00:00"
+            b"older", captured_at="2026-10-24T10:00:00+00:00",
+            report_start="2026-10-01", report_end="2026-10-07"
         )
         self.store.save_snapshot(
             [self.row(views=35, contacts=4, spend=150)],
-            b"newer", captured_at="2026-10-25T10:00:00+00:00"
+            b"newer", captured_at="2026-10-25T10:00:00+00:00",
+            report_start="2026-10-08", report_end="2026-10-14"
         )
         result = self.store.compare_latest()
         self.assertTrue(result["available"])
@@ -79,6 +81,68 @@ class HistoryStoreTests(unittest.TestCase):
         self.assertEqual(change["metrics"]["views"]["delta"], 15)
         self.assertEqual(change["metrics"]["contacts"]["delta"], 2)
         self.assertEqual(change["metrics"]["spend"]["delta"], 50)
+
+    def test_compare_refuses_missing_periods(self):
+        self.store.save_snapshot([self.row()], b"no-period-1")
+        self.store.save_snapshot([self.row(views=30)], b"no-period-2")
+        result = self.store.compare_latest()
+        self.assertFalse(result["available"])
+        self.assertIn("Не указан период", result["reason"])
+
+    def test_compare_refuses_overlapping_periods(self):
+        self.store.save_snapshot(
+            [self.row()], b"overlap-1",
+            report_start="2026-10-01", report_end="2026-10-10"
+        )
+        self.store.save_snapshot(
+            [self.row(views=30)], b"overlap-2",
+            report_start="2026-10-08", report_end="2026-10-17"
+        )
+        result = self.store.compare_latest()
+        self.assertFalse(result["available"])
+        self.assertEqual(result["comparison_status"], "overlap")
+
+    def test_compare_refuses_same_reporting_period(self):
+        self.store.save_snapshot(
+            [self.row()], b"same-period-1",
+            report_start="2026-10-01", report_end="2026-10-07"
+        )
+        self.store.save_snapshot(
+            [self.row(views=30)], b"same-period-2",
+            report_start="2026-10-01", report_end="2026-10-07"
+        )
+        result = self.store.compare_latest()
+        self.assertFalse(result["available"])
+        self.assertEqual(result["comparison_status"], "same_period")
+
+    def test_compare_refuses_unequal_period_durations(self):
+        self.store.save_snapshot(
+            [self.row()], b"unequal-1",
+            report_start="2026-10-01", report_end="2026-10-07"
+        )
+        self.store.save_snapshot(
+            [self.row(views=30)], b"unequal-2",
+            report_start="2026-10-08", report_end="2026-10-18"
+        )
+        result = self.store.compare_latest()
+        self.assertFalse(result["available"])
+        self.assertEqual(result["comparison_status"], "unequal_duration")
+
+    def test_infer_period_from_filename(self):
+        self.assertEqual(
+            infer_report_period("Статистика_с_2026-09-01_по_2026-09-30(2).xlsx"),
+            ("2026-09-01", "2026-09-30"),
+        )
+        self.assertEqual(infer_report_period("statistics_september.xlsx"), ("", ""))
+
+    def test_save_rejects_partial_or_reversed_period(self):
+        with self.assertRaises(ValueError):
+            self.store.save_snapshot([self.row()], b"partial", report_start="2026-10-01")
+        with self.assertRaises(ValueError):
+            self.store.save_snapshot(
+                [self.row()], b"reversed",
+                report_start="2026-10-10", report_end="2026-10-01"
+            )
 
     def test_compare_without_two_snapshots_explains_limitation(self):
         self.store.save_snapshot([self.row()], b"only-one")
