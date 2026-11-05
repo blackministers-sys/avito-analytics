@@ -135,28 +135,33 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
 
 
 def diagnose_categories(frame: pd.DataFrame) -> list[dict]:
-    """One diagnosis per category; compare city-category cohorts within each category."""
+    """Diagnose each category against the median of its city cohorts."""
     output = []
     for category, group in frame.groupby("Категория", dropna=False):
         own = _metrics(group)
-        city_groups = [g for _, g in group.groupby("Город", dropna=False) if len(g) >= 2]
-        peers = pd.concat(city_groups, ignore_index=True) if len(city_groups) >= 2 else pd.DataFrame()
+        city_metrics = []
+        for _, city_group in group.groupby("Город", dropna=False):
+            city = _metrics(city_group)
+            if city["shows"] >= 300 and city["views"] >= 50:
+                city_metrics.append(city)
         baseline = None
-        if not peers.empty:
-            baseline = _metrics(peers)
-        # If there is no independent city cohort, report descriptive metrics without
-        # pretending that the category can be benchmarked against itself.
-        if own["shows"] < 300 or own["views"] < 50:
+        if len(city_metrics) >= 2:
+            baseline = {
+                "ctr": _median(x["ctr"] for x in city_metrics),
+                "view_to_contact": _median(x["view_to_contact"] for x in city_metrics),
+                "cost_per_view": _median(x["cost_per_view"] for x in city_metrics),
+            }
+            diagnosis = _stage_hypothesis(own, baseline, "медиана городских когорт категории")
+        elif own["shows"] < 300 or own["views"] < 50:
             diagnosis = _stage_hypothesis(own, None, "категория")
-        elif baseline and baseline["views"] > 0:
-            diagnosis = _stage_hypothesis(own, baseline, "внутри категории по городским когортам")
         else:
             diagnosis = {
                 "stage": "Нужен ориентир",
-                "hypothesis": "Категория рассчитана, но независимой сопоставимой группы городов нет.",
-                "test": "Сопоставить категорию с прошлым периодом или накопить несколько городских когорт.",
+                "hypothesis": "Категория рассчитана, но в ней недостаточно городских когорт для независимого сравнения.",
+                "test": "Накопить данные минимум по нескольким городам или сравнить с предыдущим сопоставимым периодом.",
                 "confidence": "Низкая",
             }
-        diagnosis.update({"category": str(category), "metrics": own, "baseline": baseline})
+        diagnosis.update({"category": str(category), "metrics": own, "baseline": baseline,
+                          "baseline_cities": len(city_metrics)})
         output.append(diagnosis)
     return output
