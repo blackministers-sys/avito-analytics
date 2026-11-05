@@ -4,7 +4,7 @@ import re
 from datetime import datetime
 
 import pandas as pd
-from data_validation import validate_export
+from data_validation import validate_export, select_identity_columns
 from history_store import HistoryStore
 from excel_import import read_excel_preserving_hyperlinks
 from flask import Flask, request, render_template_string, send_file, redirect
@@ -430,11 +430,15 @@ def analyze():
             actual = find_col(source, canonical)
             if actual:
                 metric_columns[canonical] = actual
-        identity_columns = []
-        for canonical in ["Номер объявления", "Название объявления"]:
-            actual = find_col(source, canonical)
-            if actual:
-                identity_columns.append(actual)
+        identity_columns = select_identity_columns(
+            source,
+            id_column=find_col(source, "Номер объявления") or "Номер объявления",
+            fallback_columns=[
+                find_col(source, canonical) or canonical
+                for canonical in ["Название объявления", "Город", "Категория",
+                                  "Подкатегория", "Параметр", "Цена"]
+            ],
+        )
         validation_report = validate_export(
             source,
             metric_columns=metric_columns,
