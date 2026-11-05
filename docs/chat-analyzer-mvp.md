@@ -123,3 +123,12 @@ The read-only sync service now accepts optional date_from/date_to bounds, suppor
 ### Verification — 2026-11-05
 
 GitHub Actions run 72 for commit bf4dd76 completed successfully. The job `test-data-validation` passed, including the Python test step and the JavaScript filters/sorting test step. This confirms the repository test workflow passed for the normalization and date-filtering changes present at that commit. The subsequent documentation-only commits do not change runtime code.
+
+
+## Browser UI diagnostics — extension v0.2.0 — 2026-11-05
+
+The user supplied screenshots of the Avito message list and an open conversation. The list UI visibly presents buyer name, listing title/price, last-message preview/time and labels such as waiting-for-reply/active-interest. The conversation UI distinguishes inbound/outbound bubbles and displays message times and delivery/read indicators. Screenshots establish the visible product structure but not DOM selectors, pagination or loading behavior.
+
+The extension was updated to v0.2.0 with an explicit local diagnostic action. On each screen, it records only visible DOM structural metadata: tag/class signatures, repeated-element counts, presence (not values) of ARIA attributes, data-attribute names, child counts and bounding rectangles. It does not read or save message text, names, aria-label values, links, form values, cookies or network data; it does not upload anything. User should run it once on the chat list and once inside an open conversation and provide both JSON files.
+
+This is a diagnostic step, not an automatic chat collector. After reviewing the two sanitized diagnostics, identify candidate repeated chat-row/message elements and decide whether a compliant UI-driven collection path is feasible. Do not automate navigation/history collection until selectors, pagination/lazy loading and sender/timestamp attribution can be validated.
