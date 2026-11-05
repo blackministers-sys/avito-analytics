@@ -118,3 +118,35 @@ class ChatStore:
         return [{"chat_id": r["chat_id"], "item_id": r["item_id"], "updated_at": r["updated_at"],
                  "messages_count": r["messages_count"], "last_message_at": r["last_message_at"],
                  "chat": json.loads(r["payload_json"])} for r in rows]
+
+
+    def messages_for_period(self, account_id: str, date_from: str | None = None,
+                            date_to_exclusive: str | None = None) -> list[dict]:
+        """Return stored messages, optionally filtered by ISO timestamp bounds.
+
+        Date filtering is performed in Python because source timestamps may be
+        Unix seconds, milliseconds or ISO strings. Unknown timestamps are
+        omitted when a period is requested.
+        """
+        from .sync_service import _message_datetime, _parse_bound
+
+        start = _parse_bound(date_from) if date_from else None
+        end = _parse_bound(date_to_exclusive) if date_to_exclusive else None
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT chat_id, payload_json FROM avito_messages WHERE account_id=?",
+                (str(account_id),),
+            ).fetchall()
+        result = []
+        for row in rows:
+            payload = json.loads(row["payload_json"])
+            if start is not None or end is not None:
+                stamp = _message_datetime(payload)
+                if stamp is None or (start is not None and stamp < start) or (end is not None and stamp >= end):
+                    continue
+            result.append({"chat_id": row["chat_id"], "message": payload})
+        result.sort(key=lambda item: (
+            _message_datetime(item["message"]) or datetime.min.replace(tzinfo=timezone.utc),
+            str(item["message"].get("id") or ""),
+        ))
+        return result
