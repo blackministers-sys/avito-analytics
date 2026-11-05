@@ -132,3 +132,18 @@ The user supplied screenshots of the Avito message list and an open conversation
 The extension was updated to v0.2.0 with an explicit local diagnostic action. On each screen, it records only visible DOM structural metadata: tag/class signatures, repeated-element counts, presence (not values) of ARIA attributes, data-attribute names, child counts and bounding rectangles. It does not read or save message text, names, aria-label values, links, form values, cookies or network data; it does not upload anything. User should run it once on the chat list and once inside an open conversation and provide both JSON files.
 
 This is a diagnostic step, not an automatic chat collector. After reviewing the two sanitized diagnostics, identify candidate repeated chat-row/message elements and decide whether a compliant UI-driven collection path is feasible. Do not automate navigation/history collection until selectors, pagination/lazy loading and sender/timestamp attribution can be validated.
+
+
+## One-click period analysis implementation — 2026-11-05
+
+The selected workflow is a server-side one-click run: open /chat-analyzer, enter the protected access key and date range, run the official Messenger API collector, then render a period report. The Chrome extension is not required for the official API route.
+
+Implemented in feature/chat-analyzer-mvp:
+- chat_analytics/store.py: query stored messages by inclusive date range (internally UTC, end-exclusive).
+- chat_analytics/sync_service.py: read-only list chats and retrieve message histories; persist complete accessible histories to preserve conversation context; count messages inside the selected interval; collect per-chat failures and return partial status instead of aborting all remaining chats.
+- chat_analytics/report.py: period report with chat/message counts, customer/seller/unknown sender counts, last sender/message, awaiting-reply signal, average first response where author and timestamps are available, and customer text-topic signals.
+- chat_analytics/api.py: protected POST /api/chat-analyzer/sync plus /chat-analyzer page. Requires CHAT_ANALYZER_ACCESS_KEY and AVITO_CLIENT_ID / AVITO_CLIENT_SECRET in server environment. Access key is sent in an HTTP header, not query string. No secrets belong in GitHub or chat.
+- app.py registers the API blueprint.
+- tests/test_chat_report.py added. CI for report and full-history sync changes passed (workflow run 85); run 86 is checking Flask registration/API changes.
+
+Important constraints before production: the official API entitlement and credentials are not verified for the LEONA account; current collector uses the repository's existing Messenger endpoint assumptions and must be tested against a real authorized account. The request runs synchronously, so large accounts may exceed web-worker timeouts; a persistent background job worker is a later reliability requirement. The extension v0.2.0 is diagnostic only and is not the official API workflow. No merge to main or deploy has been made.
