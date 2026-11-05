@@ -5,6 +5,7 @@ from datetime import datetime
 
 import pandas as pd
 from data_validation import validate_export, select_identity_columns
+from analytics_engine import diagnose_ads, diagnose_categories
 from history_store import HistoryStore
 from excel_import import read_excel_preserving_hyperlinks
 from flask import Flask, request, render_template_string, send_file, redirect
@@ -222,6 +223,14 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 {% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
 <section class="panel" style="margin-top:15px">
+<h2>Диагностика воронки по категориям</h2>
+<p class="muted small">Для каждой категории указан наиболее вероятный этап ограничения. Это гипотеза по данным выгрузки, а не доказанная причина. При отсутствии независимого ориентира система это показывает.</p>
+<div class="tablebox"><table><thead><tr><th>Категория</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>Просмотр → контакт</th><th>Этап просадки</th><th>Гипотеза и проверка</th></tr></thead><tbody>
+{% for d in category_diagnostics %}
+<tr><td>{{ d.category }}</td><td>{{ d.metrics.ads }}</td><td>{{ integer(d.metrics.shows) }}</td><td>{{ integer(d.metrics.views) }}</td><td>{{ integer(d.metrics.contacts) }}</td><td>{{ (d.metrics.ctr * 100)|round(2) }}%</td><td>{{ (d.metrics.view_to_contact * 100)|round(2) }}%</td><td><b>{{ d.stage }}</b></td><td>{{ d.hypothesis }}<br><b>Проверить:</b> {{ d.test }}<br><span class="muted small">Уверенность: {{ d.confidence }}</span></td></tr>
+{% endfor %}
+</tbody></table></div></section>
+<section class="panel" style="margin-top:15px">
 <h2>Фильтры и сортировка</h2>
 <div class="filters">
 <label>Город <select id="filterCity"><option value="">Все города</option></select></label>
@@ -234,7 +243,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, заголовок формируется по городу, категории, параметру и цене.</div>
 <div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Заголовок</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Приоритет</th><th>Оценка</th><th>Что делать</th></tr></thead><tbody>
-{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-priority="{{ 3 if r.priority == 'Высокий' else 2 if r.priority == 'Средний' else 1 }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td class="muted small"><details><summary>Показать рекомендацию</summary><div>{{ r.next_step }}</div></details></td></tr>{% endfor %}
+{% for r in rows %}<tr class="data-row" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-priority="{{ 3 if r.priority == 'Высокий' else 2 if r.priority == 'Средний' else 1 }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td class="muted small"><details><summary>Показать рекомендацию</summary><div><b>Этап воронки:</b> {{ r.funnel_stage }}<br><b>Гипотеза:</b> {{ r.funnel_hypothesis }}<br><b>Что проверить:</b> {{ r.funnel_test }}<br><br>{{ r.next_step }}</div></details></td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
@@ -446,6 +455,9 @@ def analyze():
         )
         df = prepare_data(source)
         LAST_EXPORT = df.copy()
+        # Evidence-based stage diagnosis for every ad and each top-level category.
+        ad_diagnostics = {item['index']: item for item in diagnose_ads(df)}
+        category_diagnostics = diagnose_categories(df)
 
         # Persist an immutable snapshot. The export's reporting period is not parsed yet,
         # so comparisons are by upload time and must be treated as preliminary.
@@ -586,6 +598,11 @@ def analyze():
                 next_step = f"Стоимость контакта близка к медиане аналогов {benchmark_scope}; продолжайте наблюдение и сравните качество обращений."
             if benchmark_cpa > 0 and action not in ("check", "insufficient"):
                 next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {len(peers)}."
+            funnel_diag = ad_diagnostics.get(idx, {})
+            funnel_stage = funnel_diag.get('stage', 'Нужен ориентир')
+            funnel_hypothesis = funnel_diag.get('hypothesis', 'Недостаточно данных для гипотезы.')
+            funnel_test = funnel_diag.get('test', 'Сравнить с сопоставимыми объявлениями.')
+            next_step += f" Этап воронки: {funnel_stage}. Гипотеза: {funnel_hypothesis} Проверка: {funnel_test}"
             if rc == 0 and rs > 0 and rv >= 100:
                 priority, priority_kind = "Высокий", "bad"
             elif action == "optimize" and benchmark_cpa > 0 and obj_cpa >= benchmark_cpa * 1.5 and rc >= 3:
@@ -605,7 +622,8 @@ def analyze():
                 "raw_shows":float(r["Показы"]), "raw_views":rv, "raw_contacts":rc,
                 "raw_rate":float(r["Конверсия в контакт, %"]), "raw_spend":rs,
                 "raw_cpa":obj_cpa if rc else 1e30,
-                "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"next_step":next_step})
+                "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"next_step":next_step,
+                "funnel_stage":funnel_stage,"funnel_hypothesis":funnel_hypothesis,"funnel_test":funnel_test})
 
         recommendations = []
         if views:
@@ -692,7 +710,7 @@ def analyze():
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
-            categories=categories, rows=rows, history_result=history_result)
+            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
