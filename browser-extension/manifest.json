@@ -1,10 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Avito Chat Analyzer — Export",
-  "version": "0.1.0",
-  "description": "Экспорт выделенного пользователем текста переписки Avito в локальный JSON.",
-  "permissions": ["activeTab", "scripting", "downloads"],
-  "host_permissions": ["https://www.avito.ru/*"],
+  "name": "Avito Chat Analyzer — Diagnostic",
+  "version": "0.2.0",
+  "description": "Локальная диагностика структуры видимого интерфейса Avito и ручной экспорт выделенного текста.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "downloads"
+  ],
+  "host_permissions": [
+    "https://www.avito.ru/*"
+  ],
   "action": {
     "default_title": "Avito Chat Analyzer",
     "default_popup": "popup.html"
