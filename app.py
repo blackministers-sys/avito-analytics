@@ -226,9 +226,10 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
-<div class="panel"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
+</section>
+<section class="panel" style="margin-top:15px"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
 {% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.ctr }}</td><td>{{ r.contact_rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td><td>{{ r.signal }}</td></tr>{% endfor %}
-</tbody></table></div></div>
+</tbody></table></div>
 </section>
 <section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th></tr></thead><tbody>
 {% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.ctr }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
