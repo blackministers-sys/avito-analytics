@@ -163,17 +163,17 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </style></head><body><div class="wrap">
 <header class="top"><div><div class="brand"><span>Avito</span> Analytics</div><div class="muted">Аналитика кабинета на основе выгрузки</div></div>
 <div class="pill">● {{ "РЕАЛЬНАЯ ВЫГРУЗКА" if has_data else "ОЖИДАЕТ ФАЙЛ" }}</div></header>
-<section class="panel upload"><div><h2>Загрузить статистику</h2><div class="muted small">Поддерживается Excel (.xlsx, .xls) до 20 МБ. Период укажите вручную или приложение распознает его из имени файла с датами «с ГГГГ-ММ-ДД по ГГГГ-ММ-ДД».</div><div style="margin-top:12px"><a href="/history" style="display:inline-block;background:#203c36;color:#7ee0b2;border:1px solid #35685a;border-radius:8px;padding:9px 12px;text-decoration:none;font-weight:700">История статистики →</a></div></div>
-<form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><label class="muted small">Период отчёта с <input type="date" name="report_start" aria-label="Начало периода отчёта"></label><label class="muted small">по <input type="date" name="report_end" aria-label="Конец периода отчёта"></label><button type="submit">Анализировать</button></form></section>
+<section class="panel upload"><div><h2>Загрузить статистику</h2><div class="muted small">Поддерживаются Excel (.xlsx, .xls) и CSV до 20 МБ.</div><div style="margin-top:12px"><a href="/history" style="display:inline-block;background:#203c36;color:#7ee0b2;border:1px solid #35685a;border-radius:8px;padding:9px 12px;text-decoration:none;font-weight:700">История статистики →</a></div></div>
+<form method="post" action="/analyze" enctype="multipart/form-data"><input type="file" name="file" accept=".xlsx,.xls,.csv" required><button type="submit">Анализировать</button></form></section>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if has_data %}
-<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк: {{ row_count }} · Период отчёта — диапазон, указанный или распознанный по имени файла</div></section>
+<section style="margin-top:22px"><h1>Обзор кабинета</h1><div class="muted">Строк объявлений: {{ row_count }}</div></section>
 {% if history_result is defined %}
 <section class="panel" style="margin-top:12px;border-color:#35685a">
 <h2>Результат сохранения истории</h2>
 <p>Файл: {{ history_result.source_filename }} · Снимок №{{ history_result.snapshot_id }}</p>
 <p>{% if history_result.created %}Создана новая запись истории.{% else %}Этот файл уже был в истории; проверено и обновлено заполнение периода.{% endif %}</p>
-<p>Период отчёта: {% if history_result.report_start or history_result.report_end %}{{ history_result.report_start or "не указан" }} — {{ history_result.report_end or "не указан" }}{% else %}не указан{% endif %}</p>
+
 <p><a href="/history">Открыть историю статистики →</a></p>
 </section>
 {% endif %}
@@ -480,8 +480,6 @@ def analyze():
             })
         history_result = HistoryStore().save_snapshot(
             history_rows, raw, source_filename=file.filename, account=history_account,
-            report_start=request.form.get("report_start", ""),
-            report_end=request.form.get("report_end", "")
         )
         history_result["source_filename"] = file.filename
 
@@ -720,7 +718,6 @@ def history():
     account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
     store = HistoryStore()
     snapshots = store.list_snapshots(account=account, limit=50)
-    comparison = store.compare_latest(account=account)
     return render_template_string("""
     <!doctype html><html lang="ru"><meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -734,28 +731,11 @@ def history():
     </style>
     <h1>История статистики</h1><p><a href="/">← Вернуться к загрузке</a></p>
     <p class="muted">Аккаунт: {{ account }}. Повторная загрузка идентичного файла не создаёт новый снимок.</p>
-    <div class="panel"><strong>Правила сравнения периодов</strong><p class="muted">Период берётся из дат, указанных при загрузке, или распознаётся из имени файла в формате «с ГГГГ-ММ-ДД по ГГГГ-ММ-ДД». Система сравнивает только непересекающиеся интервалы одинаковой длительности. Повторный отчёт за тот же период, пересечение дат, разные длительности или отсутствие периода не выдаются за динамику.</p></div>
-    <div class="panel"><h2>Последние снимки</h2>
-    {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата загрузки</th><th>Файл</th><th>Период отчёта</th><th>Строк</th><th>Данные</th></tr></thead><tbody>
-    {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{% if s.report_start or s.report_end %}{{s.report_start or "…"}} — {{s.report_end or "…"}}{% else %}<span class="muted">Не указан</span>{% endif %}</td><td>{{s.row_count}}</td><td><a href="/history/{{s.id}}">Открыть данные →</a></td></tr>{% endfor %}
+        <div class="panel"><h2>Последние снимки</h2>
+    {% if snapshots %}<table><thead><tr><th>ID</th><th>Дата загрузки</th><th>Файл</th><th>Строк</th><th>Данные</th></tr></thead><tbody>
+    {% for s in snapshots %}<tr><td>{{s.id}}</td><td>{{s.captured_at}}</td><td>{{s.source_filename}}</td><td>{{s.row_count}}</td><td><a href="/history/{{s.id}}">Открыть данные →</a></td></tr>{% endfor %}
     </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
-    <div class="panel"><h2>Сравнение двух последних отчётов</h2>
-    {% if comparison.available %}
-      <p>Загрузки: {{comparison.older_captured_at}} → {{comparison.newer_captured_at}}</p>
-      <p>Периоды отчётов: {% if comparison.older_report_start or comparison.older_report_end %}{{comparison.older_report_start or "…"}} — {{comparison.older_report_end or "…"}}{% else %}не указаны{% endif %} → {% if comparison.newer_report_start or comparison.newer_report_end %}{{comparison.newer_report_start or "…"}} — {{comparison.newer_report_end or "…"}}{% else %}не указаны{% endif %}</p>
-      <p>Длительность каждого периода: {{comparison.period_days}} дн. · Изменений строк: {{comparison.changes|length}}</p>
-      <p class="muted">{{comparison.note}}</p>
-      <table><thead><tr><th>Объявление</th><th>Статус</th><th>Просмотры</th><th>Контакты</th><th>Расходы</th><th>Избранное</th></tr></thead><tbody>
-      {% for x in comparison.changes %}
-       <tr><td>{{x.title}}</td><td>{% if x.status=='new' %}Новое{% elif x.status=='missing' %}Не найдено в новой выгрузке{% else %}Есть в обоих снимках{% endif %}</td>
-       {% if x.current and x.previous %}
-        <td>{{x.metrics.views.before}} → {{x.metrics.views.after}} ({{'%+.0f'|format(x.metrics.views.delta)}})</td>
-        <td>{{x.metrics.contacts.before}} → {{x.metrics.contacts.after}} ({{'%+.0f'|format(x.metrics.contacts.delta)}})</td>
-        <td>{{x.metrics.spend.before}} → {{x.metrics.spend.after}} ({{'%+.0f'|format(x.metrics.spend.delta)}})</td>
-        <td>{{x.metrics.favorites.before}} → {{x.metrics.favorites.after}} ({{'%+.0f'|format(x.metrics.favorites.delta)}})</td>
-       {% else %}<td>—</td><td>—</td><td>—</td><td>—</td>{% endif %}</tr>
-      {% endfor %}</tbody></table>
-    {% else %}<p>{{comparison.reason}}</p>{% endif %}</div>
+    
     </html>
     """, account=account, snapshots=snapshots, comparison=comparison)
 
@@ -784,7 +764,6 @@ def history_snapshot(snapshot_id: int):
     <div class="panel">
       <p><strong>Файл:</strong> {{ snapshot.source_filename }}</p>
       <p><strong>Дата загрузки:</strong> {{ snapshot.captured_at }}</p>
-      <p><strong>Период:</strong> {% if snapshot.report_start or snapshot.report_end %}{{ snapshot.report_start or "…" }} — {{ snapshot.report_end or "…" }}{% else %}не указан{% endif %}</p>
       <p><strong>Строк в снимке:</strong> {{ observations|length }} (в метаданных: {{ snapshot.row_count }})</p>
     </div>
     {% if observations %}
