@@ -225,7 +225,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
-<div class="panel"><h2>Сводка по городам</h2><p class="muted small">Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
+<div class="panel"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
 {% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.ctr }}</td><td>{{ r.contact_rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td><td>{{ r.signal }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
@@ -266,7 +266,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </div><div class="muted small" id="filterCount" style="margin-top:10px"></div>
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, заголовок формируется по городу, категории, параметру и цене.</div>
-<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Заголовок</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>₽/контакт</th><th>Приоритет</th><th>Оценка</th><th>Расшифровка</th></tr></thead><tbody>
+<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Заголовок</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>₽/контакт</th><th>ДРР</th><th>Приоритет</th><th>Оценка</th><th>Расшифровка</th></tr></thead><tbody>
 {% for r in rows %}<tr class="data-row" data-row-id="{{ loop.index0 }}" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-ctr="{{ r.raw_ctr }}" data-rate="{{ r.raw_rate }}" data-drr="{{ r.raw_drr }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-priority="{{ 3 if r.priority == 'Высокий' else 2 if r.priority == 'Средний' else 1 }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.ctr }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td>{{ r.drr }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td><button type="button" class="analysis-toggle" data-detail-for="{{ loop.index0 }}" aria-expanded="false">Показать расшифровку</button></td></tr>
 <tr class="listing-analysis" data-detail-for="{{ loop.index0 }}" hidden><td colspan="13"><div class="analysis-grid"><div class="analysis-item"><strong>Этап воронки:</strong> {{ r.funnel_stage }}<br><strong>Гипотеза:</strong> {{ r.funnel_hypothesis }}</div><div class="analysis-item"><strong>Что проверить:</strong> {{ r.funnel_test }}</div><div class="analysis-item">{{ r.next_step }}</div></div></td></tr>{% endfor %}
 </tbody></table></div></section>
@@ -764,7 +764,7 @@ def analyze():
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
-            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, history_result=history_result)
+            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, pct=pct, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
