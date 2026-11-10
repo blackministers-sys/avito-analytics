@@ -225,11 +225,25 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <section class="panel" style="margin-top:15px">
 <h2>Диагностика воронки по категориям</h2>
 <p class="muted small">Для каждой категории указан наиболее вероятный этап ограничения. Это гипотеза по данным выгрузки, а не доказанная причина. При отсутствии независимого ориентира система это показывает.</p>
-<div class="tablebox"><table><thead><tr><th>Категория</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>Просмотр → контакт</th><th>Этап просадки</th><th>Гипотеза и проверка</th></tr></thead><tbody>
+<div class="tablebox"><table><thead><tr><th>Категория</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>Просмотр → контакт</th><th>Этап просадки</th></tr></thead><tbody>
 {% for d in category_diagnostics %}
-<tr><td>{{ d.category }}</td><td>{{ d.metrics.ads }}</td><td>{{ integer(d.metrics.shows) }}</td><td>{{ integer(d.metrics.views) }}</td><td>{{ integer(d.metrics.contacts) }}</td><td>{{ (d.metrics.ctr * 100)|round(2) }}%</td><td>{{ (d.metrics.view_to_contact * 100)|round(2) }}%</td><td><b>{{ d.stage }}</b></td><td>{{ d.hypothesis }}<br><b>Проверить:</b> {{ d.test }}<br><span class="muted small">Уверенность: {{ d.confidence }}</span></td></tr>
+<tr><td>{{ d.category }}</td><td>{{ d.metrics.ads }}</td><td>{{ integer(d.metrics.shows) }}</td><td>{{ integer(d.metrics.views) }}</td><td>{{ integer(d.metrics.contacts) }}</td><td>{{ (d.metrics.ctr * 100)|round(2) }}%</td><td>{{ (d.metrics.view_to_contact * 100)|round(2) }}%</td><td><b>{{ d.stage }}</b></td></tr>
 {% endfor %}
-</tbody></table></div></section>
+</tbody></table></div>
+<div style="margin-top:22px">
+<h3>Гипотеза и проверка</h3>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px">
+{% for d in category_diagnostics %}
+<article style="min-width:0;padding:14px;border:1px solid var(--line);border-radius:10px;background:rgba(255,255,255,.02);overflow-wrap:anywhere">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+<strong>{{ d.category }}</strong><span class="muted small">{{ d.stage }} · Уверенность: {{ d.confidence }}</span>
+</div>
+<p style="margin:10px 0 7px;white-space:normal;overflow-wrap:anywhere">{{ d.hypothesis }}</p>
+<p style="margin:0;white-space:normal;overflow-wrap:anywhere"><b>Проверить:</b> {{ d.test }}</p>
+</article>
+{% endfor %}
+</div>
+</div></section>
 <section class="panel" style="margin-top:15px">
 <h2>Фильтры и сортировка</h2>
 <div class="filters">
