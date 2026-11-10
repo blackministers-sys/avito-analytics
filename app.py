@@ -724,7 +724,7 @@ def history():
     <title>История — Avito Analytics</title>
     <style>
       body{font-family:Arial,sans-serif;max-width:1100px;margin:30px auto;padding:0 16px;background:#0b1120;color:#e5e7eb}
-      a{color:#8ab4ff} .muted{color:#9ca3af} input[type=date]{background:#0b1120;color:#e5e7eb;border:1px solid #374151;border-radius:6px;padding:8px} table{width:100%;border-collapse:collapse;margin:18px 0}
+      a{color:#8ab4ff} .muted{color:#9ca3af} table{width:100%;border-collapse:collapse;margin:18px 0}
       th,td{text-align:left;padding:10px;border-bottom:1px solid #374151;font-size:14px}
       .panel{border:1px solid #374151;border-radius:10px;padding:16px;margin:18px 0;overflow:auto}
       code{overflow-wrap:anywhere}
@@ -737,7 +737,7 @@ def history():
     </tbody></table>{% else %}<p>История пока пуста. Загрузите статистику через главную страницу.</p>{% endif %}</div>
     
     </html>
-    """, account=account, snapshots=snapshots, comparison=comparison)
+    """, account=account, snapshots=snapshots)
 
 
 
