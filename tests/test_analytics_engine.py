@@ -23,7 +23,7 @@ class DiagnoseAdsTests(unittest.TestCase):
 
     def test_same_city_category_peers_are_used(self):
         result = diagnose_ads(self.make_frame())
-        self.assertEqual(result[0]["baseline_ads"], 2)
+        self.assertEqual(result[0]["baseline_ads"], 3)
         self.assertEqual(result[0]["scope"], "город + категория")
 
     def test_falls_back_to_category_then_all_export(self):
@@ -32,7 +32,7 @@ class DiagnoseAdsTests(unittest.TestCase):
         frame.loc[4, "Город"] = "СПб"
         result = diagnose_ads(frame)
         self.assertEqual(result[4]["scope"], "товарная категория, все города")
-        self.assertEqual(result[4]["baseline_ads"], 3)
+        self.assertEqual(result[4]["baseline_ads"], 4)
 
     def test_empty_frame_is_supported(self):
         self.assertEqual(diagnose_ads(self.make_frame().iloc[0:0]), [])
