@@ -227,7 +227,7 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
 </section>
-<section class="panel" style="margin-top:15px"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
+<section class="panel" style="margin-top:15px"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
 {% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.ctr }}</td><td>{{ r.contact_rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td><td>{{ r.signal }}</td></tr>{% endfor %}
 </tbody></table></div>
 </section>
@@ -317,9 +317,9 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
      const groups=new Map();
      shown.forEach(r=>{
        const name=(r.dataset[key]||'').trim()||'Не указано';
-       if(!groups.has(name)) groups.set(name,{name,ads:0,shows:0,views:0,contacts:0,spend:0,noContacts:0});
+       if(!groups.has(name)) groups.set(name,{name,ads:0,shows:0,views:0,contacts:0,spend:0,revenue:0,noContacts:0});
        const g=groups.get(name);
-       g.ads+=1; g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend');
+       g.ads+=1; g.shows+=n(r,'shows'); g.views+=n(r,'views'); g.contacts+=n(r,'contacts'); g.spend+=n(r,'spend'); g.revenue+=n(r,'revenue');
        if(n(r,'contacts')===0) g.noContacts+=1;
      });
      const sorted=[...groups.values()].sort((a,b)=>b.contacts-a.contacts||b.views-a.views||a.name.localeCompare(b.name,'ru'));
@@ -387,10 +387,10 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
              signal='Нет достаточных сопоставимых категорий; продолжить наблюдение';
            }
          }
-         [g.name,Math.round(g.views).toLocaleString('ru-RU'),
-          Math.round(g.contacts).toLocaleString('ru-RU'),
+         [g.name,g.shows?((g.views/g.shows)*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%':'—',
           g.views?rate.toLocaleString('ru-RU',{maximumFractionDigits:2})+'%':'—',
           Math.round(g.spend).toLocaleString('ru-RU')+' ₽',
+          Math.round(g.revenue).toLocaleString('ru-RU')+' ₽',
           cpa,signal]
           .forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td);});
        } else {
