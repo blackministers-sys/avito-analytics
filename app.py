@@ -38,6 +38,8 @@ ALIASES = {
     "Дней на Авито": ["Дней на Авито"],
     "Показы в просмотры": ["Конверсия из показов в просмотры"],
     "Просмотры в контакты": ["Конверсия из просмотров в контакты"],
+    "Выручка доставленных товаров": ["Стоимость доставленных товаров"],
+    "Выручка заказанных товаров": ["Стоимость заказанных товаров"],
 }
 
 def clean_col(value):
@@ -77,7 +79,8 @@ def prepare_data(df):
 
     for canonical in ["Показы", "Просмотры", "Контакты", "Избранное",
                       "Средняя цена просмотра", "Средняя цена контакта",
-                      "Дней на Авито", "Показы в просмотры", "Просмотры в контакты"]:
+                      "Дней на Авито", "Показы в просмотры", "Просмотры в контакты",
+                      "Выручка доставленных товаров", "Выручка заказанных товаров"]:
         col = find_col(df, canonical)
         df[canonical] = numeric(df[col]) if col else 0
 
@@ -97,9 +100,14 @@ def prepare_data(df):
         col = find_col(df, canonical)
         df[canonical] = df[col].fillna("").astype(str).str.strip() if col else ""
 
-    # Derive rates from counts where possible; avoid trusting rounded source rates.
-    df["Конверсия в просмотр, %"] = (df["Просмотры"] / df["Показы"].replace(0, pd.NA) * 100).fillna(0)
-    df["Конверсия в контакт, %"] = (df["Контакты"] / df["Просмотры"].replace(0, pd.NA) * 100).fillna(0)
+    # Recompute rates from counts; delivered goods value is realized revenue for DDR.
+    df["CTR, %"] = (df["Просмотры"] / df["Показы"].replace(0, pd.NA) * 100).fillna(0)
+    df["CR, %"] = (df["Контакты"] / df["Просмотры"].replace(0, pd.NA) * 100).fillna(0)
+    df["Конверсия в просмотр, %"] = df["CTR, %"]
+    df["Конверсия в контакт, %"] = df["CR, %"]
+    df["Выручка"] = df["Выручка доставленных товаров"]
+    df["ДРР, %"] = (df["Расходы"] / df["Выручка"].replace(0, pd.NA) * 100).fillna(0)
+    df["ДРР по заказанным товарам, %"] = (df["Расходы"] / df["Выручка заказанных товаров"].replace(0, pd.NA) * 100).fillna(0)
     df["Стоимость контакта, ₽"] = (df["Расходы"] / df["Контакты"].replace(0, pd.NA)).fillna(0)
     df["Стоимость просмотра, ₽"] = (df["Расходы"] / df["Просмотры"].replace(0, pd.NA)).fillna(0)
     df["Объект"] = df.apply(make_label, axis=1)
@@ -153,7 +161,7 @@ input[type=file]{max-width:100%;color:var(--muted)}button{background:#3568ce;col
 .label{color:var(--muted);font-size:13px}.value{font-size:28px;font-weight:800;margin:10px 0 4px;letter-spacing:-.5px}
 .small{font-size:12px}.good{color:var(--green)}.bad{color:var(--red)}.warn{color:var(--yellow)}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:15px}
-.tablebox{overflow-x:auto;max-width:100%}#citySummaryTable{table-layout:fixed;width:100%;white-space:normal;font-size:12px}#citySummaryTable th,#citySummaryTable td{padding:9px 6px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}#citySummaryTable th:nth-child(1),#citySummaryTable td:nth-child(1){width:19%}#citySummaryTable th:nth-child(2),#citySummaryTable td:nth-child(2){width:12%}#citySummaryTable th:nth-child(3),#citySummaryTable td:nth-child(3){width:10%}#citySummaryTable th:nth-child(4),#citySummaryTable td:nth-child(4){width:12%}#citySummaryTable th:nth-child(5),#citySummaryTable td:nth-child(5){width:13%}#citySummaryTable th:nth-child(6),#citySummaryTable td:nth-child(6){width:12%}#citySummaryTable th:nth-child(7),#citySummaryTable td:nth-child(7){width:22%;line-height:1.35}.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.filters label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px}.filters select{background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px;min-width:145px}.filters button.secondary{background:#29364b}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:12px;border-bottom:1px solid var(--line)}td{padding:12px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border:0}#recommendationsTable{table-layout:fixed;width:100%;white-space:normal;font-size:12px}#recommendationsTable th,#recommendationsTable td{padding:8px 6px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}#recommendationsTable th:nth-child(1),#recommendationsTable td:nth-child(1){width:20%}#recommendationsTable th:nth-child(2),#recommendationsTable td:nth-child(2){width:9%}#recommendationsTable th:nth-child(3),#recommendationsTable td:nth-child(3),#recommendationsTable th:nth-child(4),#recommendationsTable td:nth-child(4),#recommendationsTable th:nth-child(5),#recommendationsTable td:nth-child(5),#recommendationsTable th:nth-child(6),#recommendationsTable td:nth-child(6),#recommendationsTable th:nth-child(7),#recommendationsTable td:nth-child(7),#recommendationsTable th:nth-child(8),#recommendationsTable td:nth-child(8){width:5%}#recommendationsTable th:nth-child(9),#recommendationsTable td:nth-child(9){width:7%}#recommendationsTable th:nth-child(10),#recommendationsTable td:nth-child(10){width:11%}#recommendationsTable th:nth-child(11),#recommendationsTable td:nth-child(11){width:13%}#recommendationsTable .analysis-toggle{background:transparent;border:0;padding:4px 0;color:var(--blue);font:inherit;font-weight:700;cursor:pointer;text-align:left}#recommendationsTable .analysis-toggle:hover{text-decoration:underline}#recommendationsTable .listing-analysis td{white-space:normal;overflow-wrap:anywhere;padding:12px 14px;background:rgba(255,255,255,.025);line-height:1.5}#recommendationsTable .listing-analysis strong{color:var(--text)}#recommendationsTable .listing-analysis .analysis-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px 22px}#recommendationsTable .listing-analysis .analysis-item{min-width:0}#recommendationsTable .listing-analysis details{min-width:0}#recommendationsTable .listing-analysis summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--blue);font-weight:700;list-style:none}#recommendationsTable .listing-analysis summary::-webkit-details-marker{display:none}#recommendationsTable .listing-analysis summary:before{content:'▶';font-size:10px;transition:transform .15s}#recommendationsTable .listing-analysis details[open] summary:before{transform:rotate(90deg)}#recommendationsTable .listing-analysis .analysis-grid{margin-top:12px}@media(max-width:1100px){ #recommendationsTable{font-size:11px}#recommendationsTable th,#recommendationsTable td{padding:6px 4px}#recommendationsTable th:nth-child(1),#recommendationsTable td:nth-child(1){width:20%}#recommendationsTable th:nth-child(2),#recommendationsTable td:nth-child(2){width:9%}#recommendationsTable th:nth-child(9),#recommendationsTable td:nth-child(9){width:8%}#recommendationsTable th:nth-child(10),#recommendationsTable td:nth-child(10){width:12%}#recommendationsTable th:nth-child(11),#recommendationsTable td:nth-child(11){width:15%}}
+.tablebox{overflow-x:auto;max-width:100%}#citySummaryTable{table-layout:fixed;width:100%;white-space:normal;font-size:12px}#citySummaryTable th,#citySummaryTable td{padding:9px 6px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}#citySummaryTable th:nth-child(1),#citySummaryTable td:nth-child(1){width:19%}#citySummaryTable th:nth-child(2),#citySummaryTable td:nth-child(2){width:12%}#citySummaryTable th:nth-child(3),#citySummaryTable td:nth-child(3){width:10%}#citySummaryTable th:nth-child(4),#citySummaryTable td:nth-child(4){width:12%}#citySummaryTable th:nth-child(5),#citySummaryTable td:nth-child(5){width:13%}#citySummaryTable th:nth-child(6),#citySummaryTable td:nth-child(6){width:12%}#citySummaryTable th:nth-child(7),#citySummaryTable td:nth-child(7){width:22%;line-height:1.35}.filters{display:flex;gap:12px;flex-wrap:wrap;align-items:end}.filters label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:12px}.filters select{background:#0b1120;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:10px;min-width:145px}.filters button.secondary{background:#29364b}table{width:100%;border-collapse:collapse;white-space:nowrap}th{text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:12px;border-bottom:1px solid var(--line)}td{padding:12px;border-bottom:1px solid var(--line)}tbody tr:last-child td{border:0}#recommendationsTable{table-layout:fixed;width:100%;white-space:normal;font-size:12px}#recommendationsTable th,#recommendationsTable td{padding:8px 6px;white-space:normal;overflow-wrap:anywhere;word-break:normal;vertical-align:top}#recommendationsTable th:nth-child(1),#recommendationsTable td:nth-child(1){width:17%}#recommendationsTable th:nth-child(2),#recommendationsTable td:nth-child(2){width:8%}#recommendationsTable th:nth-child(3),#recommendationsTable td:nth-child(3),#recommendationsTable th:nth-child(4),#recommendationsTable td:nth-child(4),#recommendationsTable th:nth-child(5),#recommendationsTable td:nth-child(5),#recommendationsTable th:nth-child(6),#recommendationsTable td:nth-child(6),#recommendationsTable th:nth-child(7),#recommendationsTable td:nth-child(7),#recommendationsTable th:nth-child(8),#recommendationsTable td:nth-child(8),#recommendationsTable th:nth-child(9),#recommendationsTable td:nth-child(9),#recommendationsTable th:nth-child(10),#recommendationsTable td:nth-child(10){width:5.5%}#recommendationsTable th:nth-child(11),#recommendationsTable td:nth-child(11){width:7%}#recommendationsTable th:nth-child(12),#recommendationsTable td:nth-child(12){width:10%}#recommendationsTable th:nth-child(13),#recommendationsTable td:nth-child(13){width:13%}#recommendationsTable .analysis-toggle{background:transparent;border:0;padding:4px 0;color:var(--blue);font:inherit;font-weight:700;cursor:pointer;text-align:left}#recommendationsTable .analysis-toggle:hover{text-decoration:underline}#recommendationsTable .listing-analysis td{white-space:normal;overflow-wrap:anywhere;padding:12px 14px;background:rgba(255,255,255,.025);line-height:1.5}#recommendationsTable .listing-analysis strong{color:var(--text)}#recommendationsTable .listing-analysis .analysis-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:10px 22px}#recommendationsTable .listing-analysis .analysis-item{min-width:0}#recommendationsTable .listing-analysis details{min-width:0}#recommendationsTable .listing-analysis summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:var(--blue);font-weight:700;list-style:none}#recommendationsTable .listing-analysis summary::-webkit-details-marker{display:none}#recommendationsTable .listing-analysis summary:before{content:'▶';font-size:10px;transition:transform .15s}#recommendationsTable .listing-analysis details[open] summary:before{transform:rotate(90deg)}#recommendationsTable .listing-analysis .analysis-grid{margin-top:12px}@media(max-width:1100px){ #recommendationsTable{font-size:11px}#recommendationsTable th,#recommendationsTable td{padding:6px 4px}#recommendationsTable th:nth-child(1),#recommendationsTable td:nth-child(1){width:17%}#recommendationsTable th:nth-child(2),#recommendationsTable td:nth-child(2){width:8%}#recommendationsTable th:nth-child(9),#recommendationsTable td:nth-child(9){width:8%}#recommendationsTable th:nth-child(10),#recommendationsTable td:nth-child(10){width:12%}#recommendationsTable th:nth-child(11),#recommendationsTable td:nth-child(11){width:15%}}
 .tag{font-size:11px;border-radius:5px;padding:4px 7px;background:#203c36;color:var(--green)}.tag.warn{background:#40351f;color:var(--yellow)}.tag.bad{background:#432630;color:var(--red)}
 .rec{padding:12px 0;border-bottom:1px solid var(--line)}.rec:last-child{border:0}.rec strong{display:block;margin:7px 0 4px}
 .error{background:#432630;color:#ffb5bd;border:1px solid #80404b;padding:12px;border-radius:8px;margin:14px 0}
@@ -189,9 +197,11 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 {% endif %}
 <section class="grid">
 <div class="metric"><div class="label">Показы</div><div class="value">{{ kpis.shows }}</div><div class="muted small">Всего по загруженным строкам</div></div>
-<div class="metric"><div class="label">Просмотры</div><div class="value">{{ kpis.views }}</div><div class="muted small">Конверсия из показов: {{ kpis.view_rate }}</div></div>
-<div class="metric"><div class="label">Контакты</div><div class="value">{{ kpis.contacts }}</div><div class="muted small">Конверсия в контакт: {{ kpis.contact_rate }}</div></div>
+<div class="metric"><div class="label">Просмотры</div><div class="value">{{ kpis.views }}</div><div class="muted small">CTR: {{ kpis.ctr }}</div></div>
+<div class="metric"><div class="label">Контакты</div><div class="value">{{ kpis.contacts }}</div><div class="muted small">CR: {{ kpis.cr }}</div></div>
 <div class="metric"><div class="label">Расходы</div><div class="value">{{ kpis.spend }}</div><div class="muted small">Стоимость контакта: {{ kpis.cpa }}</div></div>
+<div class="metric"><div class="label">Выручка (доставлено)</div><div class="value">{{ kpis.revenue }}</div><div class="muted small">Стоимость доставленных товаров по выгрузке Avito</div></div>
+<div class="metric"><div class="label">ДРР</div><div class="value">{{ kpis.drr }}</div><div class="muted small">Расходы / выручка доставленных товаров</div></div>
 </section>
 <section class="panel" style="margin-top:15px">
 <h2>Маркетинговая воронка</h2>
@@ -215,19 +225,19 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div id="recommendationsList">
 {% for rec in recommendations %}<div class="rec"><span class="tag {{ rec.kind }}">{{ rec.label }}</span><strong>{{ rec.title }}</strong><div class="muted">{{ rec.text }}</div></div>{% endfor %}
 </div></div>
-<div class="panel"><h2>Сводка по городам</h2><p class="muted small">Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
-{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.contact_rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td>{{ r.signal }}</td></tr>{% endfor %}
+<div class="panel"><h2>Сводка по городам</h2><p class="muted small">CTR = просмотры / показы; CR = контакты / просмотры; ДРР = расходы / стоимость доставленных товаров. Стоимость контакта считается как общие расходы города / общие контакты. Города отсортированы по количеству контактов; малые выборки оценивайте осторожно.</p><div class="tablebox"><table id="citySummaryTable"><thead><tr><th>Город</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th><th>Предварительный сигнал</th></tr></thead><tbody>
+{% for r in cities %}<tr class="city-summary-row" data-city="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.ctr }}</td><td>{{ r.contact_rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td><td>{{ r.signal }}</td></tr>{% endfor %}
 </tbody></table></div></div>
 </section>
-<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th></tr></thead><tbody>
-{% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
+<section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>ДРР</th><th>₽/контакт</th></tr></thead><tbody>
+{% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.ctr }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.drr }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
 <section class="panel" style="margin-top:15px">
 <h2>Диагностика воронки по категориям</h2>
 <p class="muted small">Для каждой категории указан наиболее вероятный этап ограничения. Это гипотеза по данным выгрузки, а не доказанная причина. При отсутствии независимого ориентира система это показывает.</p>
-<div class="tablebox"><table><thead><tr><th>Категория</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>Просмотр → контакт</th><th>Этап просадки</th></tr></thead><tbody>
+<div class="tablebox"><table><thead><tr><th>Категория</th><th>Объявлений</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>ДРР</th><th>Этап просадки</th></tr></thead><tbody>
 {% for d in category_diagnostics %}
-<tr><td>{{ d.category }}</td><td>{{ d.metrics.ads }}</td><td>{{ integer(d.metrics.shows) }}</td><td>{{ integer(d.metrics.views) }}</td><td>{{ integer(d.metrics.contacts) }}</td><td>{{ (d.metrics.ctr * 100)|round(2) }}%</td><td>{{ (d.metrics.view_to_contact * 100)|round(2) }}%</td><td><b>{{ d.stage }}</b></td></tr>
+<tr><td>{{ d.category }}</td><td>{{ d.metrics.ads }}</td><td>{{ integer(d.metrics.shows) }}</td><td>{{ integer(d.metrics.views) }}</td><td>{{ integer(d.metrics.contacts) }}</td><td>{{ (d.metrics.ctr * 100)|round(2) }}%</td><td>{{ (d.metrics.view_to_contact * 100)|round(2) }}%</td><td>{{ pct(d.metrics.drr) if d.metrics.revenue > 0 else "—" }}</td><td><b>{{ d.stage }}</b></td></tr>
 {% endfor %}
 </tbody></table></div>
 <div style="margin-top:22px">
@@ -251,14 +261,14 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <label>Категория <select id="filterCategory"><option value="">Все категории</option></select></label>
 <label>Оценка <select id="filterStatus"><option value="">Все оценки</option></select></label>
 <label>Контакты <select id="filterContacts"><option value="">Любое количество</option><option value="yes">Есть контакты</option><option value="no">Нет контактов</option></select></label>
-<label>Сортировать <select id="sortBy"><option value="default">По исходному порядку</option><option value="shows">Показы: больше → меньше</option><option value="views">Просмотры: больше → меньше</option><option value="contacts">Контакты: больше → меньше</option><option value="rate">Конверсия в контакт: выше → ниже</option><option value="spend">Расходы: больше → меньше</option><option value="cpaAsc">Стоимость контакта: дешевле → дороже</option><option value="cpaDesc">Стоимость контакта: дороже → дешевле</option><option value="priority">Приоритет: высокий → низкий</option></select></label>
+<label>Сортировать <select id="sortBy"><option value="default">По исходному порядку</option><option value="shows">Показы: больше → меньше</option><option value="views">Просмотры: больше → меньше</option><option value="contacts">Контакты: больше → меньше</option><option value="ctr">CTR: выше → ниже</option><option value="rate">CR: выше → ниже</option><option value="drr">ДРР: ниже → выше</option><option value="spend">Расходы: больше → меньше</option><option value="cpaAsc">Стоимость контакта: дешевле → дороже</option><option value="cpaDesc">Стоимость контакта: дороже → дешевле</option><option value="priority">Приоритет: высокий → низкий</option></select></label>
 <button type="button" id="resetFilters" class="secondary">Сбросить</button>
 </div><div class="muted small" id="filterCount" style="margin-top:10px"></div>
 </section>
 <section class="panel" style="margin-top:15px"><h2>Строки выгрузки</h2><div class="muted small" style="margin-bottom:12px">Для оценки используются доступные поля. Если в файле нет ID или названия объявления, заголовок формируется по городу, категории, параметру и цене.</div>
-<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Заголовок</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>Конверсия</th><th>Расходы</th><th>₽/контакт</th><th>Приоритет</th><th>Оценка</th><th>Расшифровка</th></tr></thead><tbody>
-{% for r in rows %}<tr class="data-row" data-row-id="{{ loop.index0 }}" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-rate="{{ r.raw_rate }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-priority="{{ 3 if r.priority == 'Высокий' else 2 if r.priority == 'Средний' else 1 }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td><button type="button" class="analysis-toggle" data-detail-for="{{ loop.index0 }}" aria-expanded="false">Показать расшифровку</button></td></tr>
-<tr class="listing-analysis" data-detail-for="{{ loop.index0 }}" hidden><td colspan="11"><div class="analysis-grid"><div class="analysis-item"><strong>Этап воронки:</strong> {{ r.funnel_stage }}<br><strong>Гипотеза:</strong> {{ r.funnel_hypothesis }}</div><div class="analysis-item"><strong>Что проверить:</strong> {{ r.funnel_test }}</div><div class="analysis-item">{{ r.next_step }}</div></div></td></tr>{% endfor %}
+<div class="tablebox"><table id="recommendationsTable"><thead><tr><th>Заголовок</th><th>Город</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>₽/контакт</th><th>ДРР</th><th>Приоритет</th><th>Оценка</th><th>Расшифровка</th></tr></thead><tbody>
+{% for r in rows %}<tr class="data-row" data-row-id="{{ loop.index0 }}" data-city="{{ r.city }}" data-category="{{ r.category }}" data-summary-category="{{ r.summary_category }}" data-status="{{ r.status }}" data-shows="{{ r.raw_shows }}" data-views="{{ r.raw_views }}" data-contacts="{{ r.raw_contacts }}" data-ctr="{{ r.raw_ctr }}" data-rate="{{ r.raw_rate }}" data-drr="{{ r.raw_drr }}" data-spend="{{ r.raw_spend }}" data-cpa="{{ r.raw_cpa }}" data-priority="{{ 3 if r.priority == 'Высокий' else 2 if r.priority == 'Средний' else 1 }}" data-name="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.city }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.ctr }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.cpa }}</td><td>{{ r.drr }}</td><td><span class="tag {{ r.priority_kind }}">{{ r.priority }}</span></td><td><span class="tag {{ r.kind }}">{{ r.status }}</span></td><td><button type="button" class="analysis-toggle" data-detail-for="{{ loop.index0 }}" aria-expanded="false">Показать расшифровку</button></td></tr>
+<tr class="listing-analysis" data-detail-for="{{ loop.index0 }}" hidden><td colspan="13"><div class="analysis-grid"><div class="analysis-item"><strong>Этап воронки:</strong> {{ r.funnel_stage }}<br><strong>Гипотеза:</strong> {{ r.funnel_hypothesis }}</div><div class="analysis-item"><strong>Что проверить:</strong> {{ r.funnel_test }}</div><div class="analysis-item">{{ r.next_step }}</div></div></td></tr>{% endfor %}
 </tbody></table></div></section>
 {% else %}
 <section class="panel" style="margin-top:15px"><h2>Что появится после загрузки</h2><p class="muted">Сводные показатели, стоимость контакта, конверсия, сравнение городов и категорий, а также предварительные рекомендации на основе данных.</p><p class="muted small">Важно: если выгрузка содержит пересекающиеся срезы или агрегаты, их необходимо проверить перед использованием общих сумм.</p></section>
@@ -294,8 +304,8 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
  function apply(){
    let shown=rows.filter(r=>(!citySelect.value||r.dataset.city===citySelect.value)&&(!categorySelect.value||r.dataset.category===categorySelect.value)&&(!statusSelect.value||r.dataset.status===statusSelect.value)&&(!contactsSelect.value||(contactsSelect.value==='yes'?n(r,'contacts')>0:n(r,'contacts')===0)));
    const key=sortSelect.value;
-   const map={shows:'shows',views:'views',contacts:'contacts',rate:'rate',spend:'spend',cpaAsc:'cpa',cpaDesc:'cpa',priority:'priority'};
-   if(map[key]) shown.sort((a,b)=> (key==='cpaAsc'?1:-1)*(n(a,map[key])-n(b,map[key])) || original.get(a)-original.get(b));
+   const map={shows:'shows',views:'views',contacts:'contacts',ctr:'ctr',rate:'rate',drr:'drr',spend:'spend',cpaAsc:'cpa',cpaDesc:'cpa',priority:'priority'};
+   if(map[key]) shown.sort((a,b)=> (key==='cpaAsc'||key==='drr'?1:-1)*(n(a,map[key])-n(b,map[key])) || original.get(a)-original.get(b));
    else shown.sort((a,b)=>original.get(a)-original.get(b));
    rows.forEach(r=>{r.hidden=true;const d=detailFor.get(r.dataset.rowId);if(d)d.hidden=true;}); shown.forEach(r=>{r.hidden=false;body.appendChild(r);const d=detailFor.get(r.dataset.rowId);if(d){d.hidden=r.querySelector('.analysis-toggle')?.getAttribute('aria-expanded')!=='true';body.appendChild(d);}});
    // Rebuild summary tables from the exact filtered listing set, not from the full export.
@@ -500,6 +510,8 @@ def analyze():
                 "Просмотры": history_row.get("Просмотры", 0),
                 "Контакты": history_row.get("Контакты", 0),
                 "Расходы": history_row.get("Расходы", 0),
+                "Выручка": history_row.get("Выручка", 0),
+                "Выручка заказанных товаров": history_row.get("Выручка заказанных товаров", 0),
                 "Избранное": history_row.get("Избранное", 0),
             })
         history_result = HistoryStore().save_snapshot(
@@ -521,10 +533,12 @@ def analyze():
         city_df = df.assign(_city=city_col).groupby("_city", as_index=False).agg(
             Объявлений=("Город", "size"), Показы=("Показы", "sum"),
             Просмотры=("Просмотры", "sum"), Контакты=("Контакты", "sum"),
-            Расходы=("Расходы", "sum"),
+            Расходы=("Расходы", "sum"), Выручка=("Выручка", "sum"),
             БезКонтактов=("Контакты", lambda values: int((values == 0).sum())))
+        city_df["ctr"] = city_df["Просмотры"] / city_df["Показы"].replace(0, pd.NA) * 100
         city_df["cpa"] = city_df["Расходы"] / city_df["Контакты"].replace(0, pd.NA)
         city_df["contact_rate"] = city_df["Контакты"] / city_df["Просмотры"].replace(0, pd.NA) * 100
+        city_df["drr"] = city_df["Расходы"] / city_df["Выручка"].replace(0, pd.NA) * 100
         city_df["no_contact_share"] = city_df["БезКонтактов"] / city_df["Объявлений"].replace(0, pd.NA) * 100
         city_df = city_df.sort_values(["Контакты", "Просмотры"], ascending=False).head(15).fillna(0)
         def city_signal(r):
@@ -544,6 +558,9 @@ def analyze():
         cities = [{"name":safe_text(r["_city"]), "ads":integer(r["Объявлений"]),
                    "shows":integer(r["Показы"]), "views":integer(r["Просмотры"]),
                    "contacts":integer(r["Контакты"]), "spend":money(r["Расходы"]),
+                   "revenue":money(r["Выручка"]),
+                   "ctr":f'{r["ctr"]:.2f}%'.replace(".",",") if r["Показы"] else "—",
+                   "drr":pct(r["drr"]) if r["Выручка"] else "—",
                    "contact_rate":f'{r["contact_rate"]:.2f}%'.replace(".",",") if r["Просмотры"] else "—",
                    "no_contact_share":f'{r["no_contact_share"]:.0f}%'.replace(".",","),
                    "signal":city_signal(r),
@@ -553,7 +570,10 @@ def analyze():
         group_cols = ["Категория", "Подкатегория", "Параметр"]
         cat_df = df.groupby(group_cols, dropna=False, as_index=False).agg(
             Показы=("Показы","sum"), Просмотры=("Просмотры","sum"),
-            Контакты=("Контакты","sum"), Расходы=("Расходы","sum"))
+            Контакты=("Контакты","sum"), Расходы=("Расходы","sum"),
+            Выручка=("Выручка","sum"))
+        cat_df["ctr"] = cat_df["Просмотры"] / cat_df["Показы"].replace(0, pd.NA) * 100
+        cat_df["drr"] = cat_df["Расходы"] / cat_df["Выручка"].replace(0, pd.NA) * 100
         cat_df["rate"] = cat_df["Контакты"] / cat_df["Просмотры"].replace(0, pd.NA) * 100
         cat_df["cpa"] = cat_df["Расходы"] / cat_df["Контакты"].replace(0, pd.NA)
         cat_df = cat_df.fillna(0).sort_values(["Контакты","Просмотры"], ascending=False).head(20)
@@ -562,8 +582,11 @@ def analyze():
             label = " · ".join([safe_text(r[c]) for c in group_cols if safe_text(r[c])])
             categories.append({"name":label or "Не указано","shows":integer(r["Показы"]),
                 "views":integer(r["Просмотры"]),"contacts":integer(r["Контакты"]),
+                "ctr":f'{r["ctr"]:.2f}%'.replace(".",",") if r["Показы"] else "—",
                 "rate":f'{r["rate"]:.2f}%'.replace(".",","),
-                "spend":money(r["Расходы"]),"cpa":money(r["cpa"]) if r["Контакты"] else "—"})
+                "spend":money(r["Расходы"]),"revenue":money(r["Выручка"]),
+                "drr":pct(r["drr"]) if r["Выручка"] else "—",
+                "cpa":money(r["cpa"]) if r["Контакты"] else "—"})
 
         # Compare listings against peers, not the whole account: cities/categories can have
         # materially different economics. Require at least three other eligible listings.
@@ -638,11 +661,15 @@ def analyze():
                 "summary_category": " · ".join([safe_text(r[c]) for c in ["Категория", "Подкатегория", "Параметр"] if safe_text(r[c])]) or "Не указано",
                 "shows":integer(r["Показы"]),"views":integer(rv),
                 "contacts":integer(rc),
-                "rate":f'{r["Конверсия в контакт, %"]:.2f}%'.replace(".",","),
-                "spend":money(rs),
+                "ctr":f'{r["CTR, %"]:.2f}%'.replace(".",","),
+                "rate":f'{r["CR, %"]:.2f}%'.replace(".",","),
+                "spend":money(rs), "revenue":money(float(r["Выручка"])),
+                "drr":pct(float(r["ДРР, %"])) if float(r["Выручка"]) > 0 else "—",
                 "cpa":money(obj_cpa) if rc else "—",
                 "raw_shows":float(r["Показы"]), "raw_views":rv, "raw_contacts":rc,
-                "raw_rate":float(r["Конверсия в контакт, %"]), "raw_spend":rs,
+                "raw_ctr":float(r["CTR, %"]), "raw_rate":float(r["CR, %"]),
+                "raw_drr":float(r["ДРР, %"]) if float(r["Выручка"]) > 0 else 1e30,
+                "raw_spend":rs,
                 "raw_cpa":obj_cpa if rc else 1e30,
                 "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"next_step":next_step,
                 "funnel_stage":funnel_stage,"funnel_hypothesis":funnel_hypothesis,"funnel_test":funnel_test})
@@ -726,13 +753,18 @@ def analyze():
             funnel.append({"name":"Воронка","rate":"—","input":"—","output":"—","status":"Нет данных","kind":"warn",
                 "action_title":"Проверьте выгрузку","action_text":"Для расчёта нужны показы, просмотры и контакты."})
 
+        total_revenue = float(df["Выручка"].sum())
         kpis = {"shows":integer(shows),"views":integer(views),"contacts":integer(contacts),
                 "spend":money(spend),"view_rate":f"{view_rate:.2f}%".replace(".",","),
+                "ctr":f"{view_rate:.2f}%".replace(".",","),
                 "contact_rate":f"{contact_rate:.2f}%".replace(".",","),
+                "cr":f"{contact_rate:.2f}%".replace(".",","),
+                "revenue":money(total_revenue),
+                "drr":pct(spend / total_revenue * 100) if total_revenue > 0 else "—",
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
-            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, history_result=history_result)
+            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, pct=pct, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
