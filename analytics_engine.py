@@ -101,36 +101,74 @@ def _stage_hypothesis(metrics: dict, baseline: dict | None, scope: str) -> dict:
 
 
 def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
-    """One diagnosis per listing row; peer baseline is same city/category when possible."""
+    """One diagnosis per listing; peer metrics are precomputed once (linear grouping)."""
+    if frame.empty:
+        return []
+
+    product_group = "Параметр" if "Параметр" in frame.columns else "Категория"
+    metric_frame = pd.DataFrame(index=frame.index)
+    metric_frame["ctr"] = frame["Просмотры"].div(frame["Показы"].replace(0, pd.NA)).fillna(0)
+    metric_frame["view_to_contact"] = frame["Контакты"].div(frame["Просмотры"].replace(0, pd.NA)).fillna(0)
+    metric_frame["cost_per_view"] = frame["Расходы"].div(frame["Просмотры"].replace(0, pd.NA)).fillna(0)
+    metric_frame["eligible"] = (frame["Показы"] >= 300) & (frame["Просмотры"] >= 50)
+
+    # Store row-level peer metrics in grouped lists once. This avoids repeatedly
+    # filtering/copying the full DataFrame for every listing (the former O(n²) path).
+    eligible = metric_frame[metric_frame["eligible"]]
+    by_city_category = {}
+    by_category = {}
+    all_peer_values = {
+        key: eligible[key].tolist()
+        for key in ("ctr", "view_to_contact", "cost_per_view")
+    }
+    for idx, row in frame.loc[eligible.index].iterrows():
+        category = row.get(product_group, "")
+        city = row.get("Город", "")
+        key = (category, city)
+        by_city_category.setdefault(key, []).append(idx)
+        by_category.setdefault(category, []).append(idx)
+
     results = []
-    eligible = frame[(frame["Показы"] >= 300) & (frame["Просмотры"] >= 50)].copy()
     for idx, row in frame.iterrows():
-        own = _metrics(frame.loc[[idx]])
-        product_group = "Параметр" if "Параметр" in frame.columns else "Категория"
-        peers = eligible[
-            (eligible[product_group] == row.get(product_group, ""))
-            & (eligible["Город"] == row.get("Город", ""))
-            & (eligible.index != idx)
-        ]
+        own_values = metric_frame.loc[idx]
+        metrics = {
+            "ads": 1,
+            "shows": float(row["Показы"]),
+            "views": float(row["Просмотры"]),
+            "contacts": float(row["Контакты"]),
+            "spend": float(row["Расходы"]),
+            "ctr": float(own_values["ctr"]),
+            "view_to_contact": float(own_values["view_to_contact"]),
+            "cost_per_view": float(own_values["cost_per_view"]),
+            "cpl": _safe_ratio(float(row["Расходы"]), float(row["Контакты"])),
+        }
+
+        category = row.get(product_group, "")
+        city = row.get("Город", "")
+        peers = by_city_category.get((category, city), [])
         scope = "город + категория"
+        if idx in peers:
+            peers = [peer for peer in peers if peer != idx]
         if len(peers) < 3:
-            peers = eligible[
-                (eligible[product_group] == row.get(product_group, ""))
-                & (eligible.index != idx)
-            ]
+            peers = [peer for peer in by_category.get(category, []) if peer != idx]
             scope = "товарная категория, все города"
         if len(peers) < 3:
-            peers = eligible[eligible.index != idx]
+            peers = [peer for peer in eligible.index if peer != idx]
             scope = "вся выгрузка"
+
         baseline = None
         if len(peers) >= 3:
             baseline = {
-                "ctr": _median((_metrics(peers.loc[[i]])["ctr"] for i in peers.index)),
-                "view_to_contact": _median((_metrics(peers.loc[[i]])["view_to_contact"] for i in peers.index)),
-                "cost_per_view": _median((_metrics(peers.loc[[i]])["cost_per_view"] for i in peers.index)),
+                key: _median(metric_frame.loc[peers, key].tolist())
+                for key in ("ctr", "view_to_contact", "cost_per_view")
             }
-        result = _stage_hypothesis(own, baseline, scope)
-        result.update({"index": idx, "baseline_ads": len(peers), "metrics": own, "baseline": baseline})
+        result = _stage_hypothesis(metrics, baseline, scope)
+        result.update({
+            "index": idx,
+            "baseline_ads": len(peers),
+            "metrics": metrics,
+            "baseline": baseline,
+        })
         results.append(result)
     return results
 
