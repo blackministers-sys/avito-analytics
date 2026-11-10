@@ -149,8 +149,9 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
     def median_excluding(values, own_value, remove_own):
         """Median of a sorted list, optionally excluding one matching own value."""
         remove_at = bisect_left(values, own_value) if remove_own and own_value > 0 else -1
-        count = len(values) - (1 if remove_at >= 0 and remove_at < len(values)
-                               and values[remove_at] == own_value else 0)
+        if remove_at >= len(values) or (remove_at >= 0 and values[remove_at] != own_value):
+            remove_at = -1
+        count = len(values) - (1 if remove_at >= 0 else 0)
         if count <= 0:
             return 0.0
 
@@ -182,8 +183,8 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
         city = row.get("Город", "")
         city_peers = by_city_category.get((category, city), [])
         category_peers = by_category.get(category, [])
-        own_is_city_peer = idx in city_peers
-        own_is_category_peer = idx in category_peers
+        own_is_city_peer = bool(metric_frame.at[idx, "eligible"])
+        own_is_category_peer = own_is_city_peer
         city_count = len(city_peers) - int(own_is_city_peer)
         category_count = len(category_peers) - int(own_is_category_peer)
 
