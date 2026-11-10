@@ -6,6 +6,7 @@ It emits hypotheses, not causal claims. All rates are recomputed from summed cou
 from __future__ import annotations
 
 import pandas as pd
+from bisect import bisect_left
 
 
 def _safe_ratio(num: float, den: float) -> float:
@@ -101,7 +102,7 @@ def _stage_hypothesis(metrics: dict, baseline: dict | None, scope: str) -> dict:
 
 
 def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
-    """One diagnosis per listing; peer metrics are precomputed once (linear grouping)."""
+    """One diagnosis per listing; peer metrics are precomputed once."""
     if frame.empty:
         return []
 
@@ -112,21 +113,55 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
     metric_frame["cost_per_view"] = frame["Расходы"].div(frame["Просмотры"].replace(0, pd.NA)).fillna(0)
     metric_frame["eligible"] = (frame["Показы"] >= 300) & (frame["Просмотры"] >= 50)
 
-    # Store row-level peer metrics in grouped lists once. This avoids repeatedly
-    # filtering/copying the full DataFrame for every listing (the former O(n²) path).
+    # Build sorted peer distributions once. Per-listing median lookup is O(log n),
+    # rather than repeatedly filtering and copying the full DataFrame.
     eligible = metric_frame[metric_frame["eligible"]]
     by_city_category = {}
     by_category = {}
-    all_peer_values = {
-        key: eligible[key].tolist()
-        for key in ("ctr", "view_to_contact", "cost_per_view")
-    }
+    all_peer_values = {key: [] for key in ("ctr", "view_to_contact", "cost_per_view")}
     for idx, row in frame.loc[eligible.index].iterrows():
         category = row.get(product_group, "")
         city = row.get("Город", "")
-        key = (category, city)
-        by_city_category.setdefault(key, []).append(idx)
+        by_city_category.setdefault((category, city), []).append(idx)
         by_category.setdefault(category, []).append(idx)
+        for key in all_peer_values:
+            value = float(metric_frame.at[idx, key])
+            if value > 0:
+                all_peer_values[key].append(value)
+
+    def sorted_values(indices, key):
+        return sorted(
+            float(metric_frame.at[index, key])
+            for index in indices
+            if float(metric_frame.at[index, key]) > 0
+        )
+
+    city_category_values = {
+        group: {key: sorted_values(indices, key) for key in all_peer_values}
+        for group, indices in by_city_category.items()
+    }
+    category_values = {
+        group: {key: sorted_values(indices, key) for key in all_peer_values}
+        for group, indices in by_category.items()
+    }
+    global_values = {key: sorted(values) for key, values in all_peer_values.items()}
+
+    def median_excluding(values, own_value, remove_own):
+        """Median of a sorted list, optionally excluding one matching own value."""
+        remove_at = bisect_left(values, own_value) if remove_own and own_value > 0 else -1
+        count = len(values) - (1 if remove_at >= 0 and remove_at < len(values)
+                               and values[remove_at] == own_value else 0)
+        if count <= 0:
+            return 0.0
+
+        def at(position):
+            original = position if remove_at < 0 or position < remove_at else position + 1
+            return values[original]
+
+        middle = count // 2
+        if count % 2:
+            return float(at(middle))
+        return float((at(middle - 1) + at(middle)) / 2)
 
     results = []
     for idx, row in frame.iterrows():
@@ -145,27 +180,40 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
 
         category = row.get(product_group, "")
         city = row.get("Город", "")
-        peers = by_city_category.get((category, city), [])
-        scope = "город + категория"
-        if idx in peers:
-            peers = [peer for peer in peers if peer != idx]
-        if len(peers) < 3:
-            peers = [peer for peer in by_category.get(category, []) if peer != idx]
+        city_peers = by_city_category.get((category, city), [])
+        category_peers = by_category.get(category, [])
+        own_is_city_peer = idx in city_peers
+        own_is_category_peer = idx in category_peers
+        city_count = len(city_peers) - int(own_is_city_peer)
+        category_count = len(category_peers) - int(own_is_category_peer)
+
+        if city_count >= 3:
+            scope = "город + категория"
+            source = city_category_values[(category, city)]
+            remove_own = own_is_city_peer
+        elif category_count >= 3:
             scope = "товарная категория, все города"
-        if len(peers) < 3:
-            peers = [peer for peer in eligible.index if peer != idx]
+            source = category_values[category]
+            remove_own = own_is_category_peer
+        else:
             scope = "вся выгрузка"
+            source = global_values
+            remove_own = bool(metric_frame.at[idx, "eligible"])
 
         baseline = None
-        if len(peers) >= 3:
+        peer_count = city_count if scope == "город + категория" else (
+            category_count if scope == "товарная категория, все города"
+            else len(eligible) - int(bool(metric_frame.at[idx, "eligible"]))
+        )
+        if peer_count >= 3:
             baseline = {
-                key: _median(metric_frame.loc[peers, key].tolist())
+                key: median_excluding(source[key], float(own_values[key]), remove_own)
                 for key in ("ctr", "view_to_contact", "cost_per_view")
             }
         result = _stage_hypothesis(metrics, baseline, scope)
         result.update({
             "index": idx,
-            "baseline_ads": len(peers),
+            "baseline_ads": peer_count,
             "metrics": metrics,
             "baseline": baseline,
         })
