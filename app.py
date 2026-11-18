@@ -219,6 +219,18 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <div class="metric"><div class="label">Расходы</div><div class="value">{{ kpis.spend }}</div><div class="muted small">Стоимость контакта: {{ kpis.cpa }}</div></div>
 <div class="metric"><div class="label">Выручка (доставлено)</div><div class="value">{{ kpis.revenue }}</div><div class="muted small">Стоимость доставленных товаров по выгрузке Avito</div></div>
 </section>
+<section class="panel" style="margin-top:15px;border-color:#35685a">
+<h2>План действий: больше контактов по меньшей цене</h2>
+<p class="muted small">Сначала усиливаем объявления с подтверждённо низкой стоимостью контакта. Затем исправляем дорогие и отдельно проверяем расходы без обращений. Масштабирование — небольшими шагами после проверки качества лидов.</p>
+<div class="cols">
+<div class="metric"><div class="label good">Кандидаты на увеличение бюджета · {{ decision_counts.scale }}</div>
+{% if decision_actions.scale %}{% for r in decision_actions.scale %}<div class="rec"><strong>{{ r.name }}</strong><div class="muted small">{{ r.city }} · {{ r.contacts }} контактов · {{ r.cpa }} за контакт</div><div class="small">{{ r.reason }}. {{ r.step }}</div></div>{% endfor %}{% else %}<p class="muted small">Пока нет объявлений с достаточной выборкой и стоимостью контакта минимум на 20% ниже медианы сопоставимых объявлений.</p>{% endif %}</div>
+<div class="metric"><div class="label warn">Сначала оптимизировать · {{ decision_counts.optimize }}</div>
+{% if decision_actions.optimize %}{% for r in decision_actions.optimize %}<div class="rec"><strong>{{ r.name }}</strong><div class="muted small">{{ r.city }} · {{ r.contacts }} контактов · {{ r.cpa }} за контакт</div><div class="small">{{ r.reason }}. {{ r.step }}</div></div>{% endfor %}{% else %}<p class="muted small">Нет объявлений, которые при достаточной выборке дороже сопоставимой медианы минимум на 25%.</p>{% endif %}</div>
+</div>
+<div class="metric" style="margin-top:12px"><div class="label bad">Расходы без контактов — ручная проверка · {{ decision_counts.audit }}</div>
+{% if decision_actions.audit %}{% for r in decision_actions.audit %}<div class="rec"><strong>{{ r.name }}</strong><div class="muted small">{{ r.city }} · {{ r.reason }}</div><div class="small">{{ r.step }}</div></div>{% endfor %}{% else %}<p class="muted small">Не найдено строк с расходами, минимум 100 просмотрами и нулём контактов.</p>{% endif %}</div>
+</section>
 <section class="panel" style="margin-top:15px">
 <h2>Маркетинговая воронка</h2>
 <p class="muted small">Показы → просмотры → контакты. Просадка определяется по конверсии и объёму данных; без сопоставимого прошлого периода или внешнего ориентира это предварительная диагностика, а не доказательство причины.</p>
@@ -719,8 +731,35 @@ def analyze():
                 "raw_ctr":float(r["CTR, %"]), "raw_rate":float(r["CR, %"]),
                 "raw_spend":rs,
                 "raw_cpa":obj_cpa if rc else 1e30,
-                "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"next_step":next_step,
+                "status":status,"kind":kind,"priority":priority,"priority_kind":priority_kind,"action":action,"benchmark_cpa":benchmark_cpa,"peer_count":peer_count,"next_step":next_step,
                 "funnel_stage":funnel_stage,"funnel_hypothesis":funnel_hypothesis,"funnel_test":funnel_test})
+
+        # Decision layer follows the user's confirmed goal: more contacts at a lower CPA,
+        # with controlled budget scaling only where the listing already beats comparable peers.
+        scale_candidates = sorted(
+            [r for r in rows if r["action"] == "strengthen"],
+            key=lambda r: (r["raw_cpa"], -r["raw_contacts"]),
+        )[:5]
+        optimize_candidates = sorted(
+            [r for r in rows if r["action"] == "optimize"],
+            key=lambda r: (-(r["raw_cpa"] / r["benchmark_cpa"] if r["benchmark_cpa"] else 0), -r["raw_spend"]),
+        )[:5]
+        audit_candidates = sorted(
+            [r for r in rows if r["raw_contacts"] == 0 and r["raw_spend"] > 0 and r["raw_views"] >= 100],
+            key=lambda r: r["raw_spend"], reverse=True,
+        )[:5]
+        decision_actions = {
+            "scale": [{**r, "reason": f'Контакт дешевле медианы аналогов на {round((1-r["raw_cpa"]/r["benchmark_cpa"])*100)}%',
+                       "step": "Проверьте качество обращений. Если оно приемлемое, увеличьте бюджет на 15–20% и повторно оцените стоимость контакта."}
+                      for r in scale_candidates],
+            "optimize": [{**r, "reason": f'Контакт дороже медианы аналогов на {round((r["raw_cpa"]/r["benchmark_cpa"]-1)*100)}%',
+                          "step": "Не отключайте автоматически. Проверьте цену, первое фото и заголовок; меняйте один элемент за тест."}
+                         for r in optimize_candidates],
+            "audit": [{**r, "reason": f'Расходы {money(r["raw_spend"])} при {integer(r["raw_views"])} просмотрах и нуле контактов',
+                       "step": "Проверьте соответствие предложения запросу, цену, фото и качество трафика. Решение о паузе — после проверки."}
+                      for r in audit_candidates],
+        }
+        decision_counts = {key: len(value) for key, value in decision_actions.items()}
 
         recommendations = []
         if views:
@@ -811,7 +850,8 @@ def analyze():
                 "cpa":money(cpa) if contacts else "—"}
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
-            categories=categories, rows=rows, category_diagnostics=category_diagnostics, integer=integer, pct=pct, history_result=history_result)
+            categories=categories, rows=rows, decision_actions=decision_actions, decision_counts=decision_counts,
+            category_diagnostics=category_diagnostics, integer=integer, pct=pct, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
