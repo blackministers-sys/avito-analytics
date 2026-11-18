@@ -496,7 +496,7 @@ def analyze():
         # so comparisons are by upload time and must be treated as preliminary.
         history_account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
         history_rows = []
-        for _, history_row in df.iterrows():
+        for history_row in df.to_dict(orient="records"):
             history_rows.append({
                 "Номер объявления": history_row.get("Номер объявления", ""),
                 "Название объявления": history_row.get("Название объявления", ""),
