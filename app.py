@@ -942,7 +942,7 @@ def analyze():
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
             categories=categories, rows=rows, decision_actions=decision_actions, decision_counts=decision_counts,
-            category_diagnostics=category_diagnostics, vehicle_report=vehicle_report, integer=integer, pct=pct, history_result=history_result)
+            category_diagnostics=category_diagnostics, vehicle_report=vehicle_report, integer=integer, pct=pct, money=money, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
