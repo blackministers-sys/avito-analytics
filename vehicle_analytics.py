@@ -52,7 +52,7 @@ MODEL_ALIASES = {
     "mazda": {"3":["mazda 3","мазда 3"],"6":["mazda 6","мазда 6"],"cx-5":["cx-5","cx5"],"cx-7":["cx-7","cx7"],"demio":["demio","демио"]},
     "ford": {"focus":["focus","фокус"],"mondeo":["mondeo","мондео"],"fiesta":["fiesta","фиеста"],"fusion":["fusion","фьюжн"],"kuga":["kuga","куга"],"transit":["transit","транзит"]},
     "volkswagen": {"polo":["polo","поло"],"golf":["golf","гольф"],"passat":["passat","пассат"],"tiguan":["tiguan","тигуан"],"touareg":["touareg","туарег"],"jetta":["jetta","джетта"]},
-    "hyundai": {"solar(is)":["solaris","солярис"],"elantra":["elantra","элантра"],"accent":["accent","акцент"],"sonata":["sonata","соната"],"ix35":["ix35","ix 35"],"tucson":["tucson","туссан"],"creta":["creta","крета"],"santa fe":["santa fe","санта фе"]},
+    "hyundai": {"solaris":["solaris","солярис"],"elantra":["elantra","элантра"],"accent":["accent","акцент"],"sonata":["sonata","соната"],"ix35":["ix35","ix 35"],"tucson":["tucson","туссан"],"creta":["creta","крета"],"santa fe":["santa fe","санта фе"]},
     "kia": {"rio":["rio","рио"],"ceed":["ceed","сид"],"cerato":["cerato","церато"],"sportage":["sportage","спортейдж"],"sorento":["sorento","соренто"],"optima":["optima","оптима"],"spectra":["spectra","спектра"]},
     "renault": {"logan":["logan","логан"],"sandero":["sandero","сандеро"],"duster":["duster","дастер"],"megane":["megane","меган"],"fluence":["fluence","флюенс"],"kaptur":["kaptur","каптюр"]},
     "chevrolet": {"cruze":["cruze","круз"],"lacetti":["lacetti","лачетти"],"aveo":["aveo","авео"],"niva":["нива","niva"],"captiva":["captiva","каптива"]},
@@ -111,6 +111,11 @@ def identify_vehicle(row):
     model = _norm(model_raw) if model_raw else ""
     generation = generation_raw.strip().upper() if generation_raw else ""
 
+    if make_raw:
+        for canonical, aliases in MAKE_ALIASES.items():
+            if make == _norm(canonical) or any(make == _norm(alias) for alias in aliases):
+                make = canonical
+                break
     if not make:
         matches = []
         for canonical, aliases in MAKE_ALIASES.items():
@@ -119,6 +124,11 @@ def identify_vehicle(row):
                     matches.append((len(_norm(alias)), canonical))
         if matches:
             make = sorted(matches, reverse=True)[0][1]
+    if make and model_raw:
+        for candidate, aliases in MODEL_ALIASES.get(make, {}).items():
+            if model == _norm(candidate) or any(model == _norm(alias) for alias in aliases):
+                model = candidate
+                break
     if make and not model:
         for candidate, aliases in MODEL_ALIASES.get(make, {}).items():
             if any(_contains_alias(normalized, _norm(alias)) for alias in aliases):
