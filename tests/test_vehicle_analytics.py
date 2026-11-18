@@ -32,3 +32,16 @@ def test_vehicle_aggregation_keeps_zero_contact_groups():
     assert lancer["contacts"] == 5
     assert lancer["no_contact_ads"] == 1
     assert result["coverage"]["identified"] == 3
+
+
+def test_vehicle_analysis_accepts_missing_optional_columns():
+    frame = pd.DataFrame([{"Название объявления": "Порог Mitsubishi Lancer 9", "Показы": 100, "Просмотры": 20, "Контакты": 1, "Расходы": 50}])
+    result = analyze_vehicle_groups(frame)
+    assert result["coverage"]["rows"] == 1
+    assert result["coverage"]["identified"] == 1
+    assert result["groups"][0]["contacts"] == 1
+
+
+def test_identify_vehicle_accepts_series_with_missing_fields():
+    row = pd.Series({"Название объявления": "Порог Mitsubishi Lancer 9"})
+    assert identify_vehicle(row)[:3] == ("mitsubishi", "lancer", "IX")
