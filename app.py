@@ -628,7 +628,7 @@ def analyze():
         median_spend = float(positive_spend.median()) if not positive_spend.empty else 0.0
         rows = []
         row_actions = []
-        for idx, r in df.iterrows():
+        for idx, r in df.to_dict(orient="index").items():
             obj_cpa = float(r["Стоимость контакта, ₽"])
             rv = float(r["Просмотры"])
             rc = float(r["Контакты"])
