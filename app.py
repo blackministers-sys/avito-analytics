@@ -717,7 +717,17 @@ def analyze():
         median_spend = float(positive_spend.median()) if not positive_spend.empty else 0.0
         rows = []
         row_actions = []
-        for idx, r in df.to_dict(orient="index").items():
+        # Avoid materializing the entire export as a nested dict. Avito exports
+        # can contain many columns; convert only fields used by this decision table.
+        decision_columns = [
+            "Стоимость контакта, ₽", "Просмотры", "Контакты", "Расходы",
+            "Город", "Категория", "Объект", "Подкатегория", "Параметр",
+            "Показы", "CTR, %", "CR, %", "Выручка",
+        ]
+        decision_frame = df.loc[:, decision_columns]
+        for values in decision_frame.itertuples(index=True, name=None):
+            idx = values[0]
+            r = dict(zip(decision_columns, values[1:]))
             obj_cpa = float(r["Стоимость контакта, ₽"])
             rv = float(r["Просмотры"])
             rc = float(r["Контакты"])
