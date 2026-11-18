@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import lru_cache
 import pandas as pd
 
 MAKE_ALIASES = {
@@ -83,6 +84,7 @@ STRUCTURED = {
     "model": ["Модель", "Модель автомобиля", "Модель авто"],
     "generation": ["Поколение", "Поколение автомобиля", "Кузов", "Код кузова"],
 }
+@lru_cache(maxsize=4096)
 def _norm(value):
     value = unicodedata.normalize("NFKC", str(value or "")).casefold().replace("ё","е")
     return re.sub(r"[^a-zа-я0-9]+", " ", value).strip()
@@ -94,9 +96,13 @@ def _find_structured(row, names):
             return str(value).strip()
     return ""
 
-def _contains_alias(text, alias):
+@lru_cache(maxsize=4096)
+def _alias_pattern(alias):
     pattern = r"(?<![a-zа-я0-9])" + re.escape(alias).replace(r"\ ", r"\s+") + r"(?![a-zа-я0-9])"
-    return re.search(pattern, text, flags=re.I) is not None
+    return re.compile(pattern, flags=re.I)
+
+def _contains_alias(text, alias):
+    return _alias_pattern(alias).search(text) is not None
 
 def identify_vehicle(row):
     if isinstance(row, pd.Series):
