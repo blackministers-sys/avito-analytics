@@ -197,10 +197,12 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 {% if history_result is defined %}
 <section class="panel" style="margin-top:12px;border-color:#35685a">
 <h2>Результат сохранения истории</h2>
-<p>Файл: {{ history_result.source_filename }} · Снимок №{{ history_result.snapshot_id }}</p>
-<p>{% if history_result.created %}Создана новая запись истории.{% else %}Этот файл уже был в истории; проверено и обновлено заполнение периода.{% endif %}</p>
-
+<p>Файл: {{ history_result.source_filename }}</p>
+<p>{{ history_result.message }}</p>
+{% if history_result.saved %}
+<p>Снимок №{{ history_result.snapshot_id }}. {% if history_result.created %}Создана новая запись истории.{% else %}Этот файл уже был в истории.{% endif %}</p>
 <p><a href="/history">Открыть историю статистики →</a></p>
+{% endif %}
 </section>
 {% endif %}
 {% if validation_report %}
@@ -571,7 +573,7 @@ def analyze():
             identity_columns=identity_columns,
         )
         df = prepare_data(source)
-        LAST_EXPORT = df.copy()
+        LAST_EXPORT = df
         # Evidence-based stage diagnosis and vehicle hierarchy analysis.
         vehicle_report = analyze_vehicle_groups(df)
         # Per-ad funnel diagnosis is intentionally deferred: the prior implementation
@@ -584,28 +586,48 @@ def analyze():
         # Persist an immutable snapshot. The export's reporting period is not parsed yet,
         # so comparisons are by upload time and must be treated as preliminary.
         history_account = os.environ.get("AVITO_ANALYTICS_ACCOUNT", "default")
-        history_rows = []
-        for history_row in df.to_dict(orient="records"):
-            history_rows.append({
-                "Номер объявления": history_row.get("Номер объявления", ""),
-                "Название объявления": history_row.get("Название объявления", ""),
-                "Город": history_row.get("Город", ""),
-                "Категория": history_row.get("Категория", ""),
-                "Подкатегория": history_row.get("Подкатегория", ""),
-                "Параметр": history_row.get("Параметр", ""),
-                "Цена": history_row.get("Цена", ""),
-                "Показы": history_row.get("Показы", 0),
-                "Просмотры": history_row.get("Просмотры", 0),
-                "Контакты": history_row.get("Контакты", 0),
-                "Расходы": history_row.get("Расходы", 0),
-                "Выручка": history_row.get("Выручка", 0),
-                "Выручка заказанных товаров": history_row.get("Выручка заказанных товаров", 0),
-                "Избранное": history_row.get("Избранное", 0),
-            })
-        history_result = HistoryStore().save_snapshot(
-            history_rows, raw, source_filename=file.filename, account=history_account,
-        )
-        history_result["source_filename"] = file.filename
+        history_result = {
+            "source_filename": file.filename,
+            "created": False,
+            "saved": False,
+            "snapshot_id": None,
+            "row_count": len(df),
+            "message": "",
+        }
+        # SQLite snapshot serialization is intentionally bounded on the free
+        # single-worker service. Large exports must still be analyzed immediately;
+        # attempting to persist every row inside the same HTTP request exhausted
+        # the 50-second worker budget after all analytics had already completed.
+        HISTORY_SYNC_ROW_LIMIT = 1000
+        if len(df) <= HISTORY_SYNC_ROW_LIMIT:
+            history_columns = [
+                "Номер объявления", "Название объявления", "Город", "Категория",
+                "Подкатегория", "Параметр", "Цена", "Показы", "Просмотры",
+                "Контакты", "Расходы", "Выручка", "Выручка заказанных товаров",
+                "Избранное",
+            ]
+            for column in history_columns:
+                if column not in df.columns:
+                    df[column] = ""
+            history_rows = (
+                dict(zip(history_columns, values))
+                for values in df.loc[:, history_columns].itertuples(index=False, name=None)
+            )
+            try:
+                saved = HistoryStore().save_snapshot(
+                    history_rows, raw, source_filename=file.filename, account=history_account,
+                )
+                history_result.update(saved)
+                history_result["saved"] = True
+                history_result["message"] = "Снимок сохранён."
+            except Exception as history_error:
+                app.logger.exception("History snapshot save failed; continuing analytics")
+                history_result["message"] = "История не сохранена, но аналитика продолжена: " + str(history_error)
+        else:
+            history_result["message"] = (
+                f"Выгрузка содержит {len(df):,} строк. Для защиты анализа от тайм-аута "
+                "сохранение истории пропущено; аналитика по текущей выгрузке выполняется."
+            )
 
         shows = df["Показы"].sum()
         views = df["Просмотры"].sum()
