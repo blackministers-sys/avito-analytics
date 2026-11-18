@@ -34,6 +34,24 @@ class DiagnoseAdsTests(unittest.TestCase):
         self.assertEqual(result[4]["scope"], "товарная категория, все города")
         self.assertEqual(result[4]["baseline_ads"], 4)
 
+
+    def test_large_export_returns_one_result_per_listing(self):
+        rows = []
+        for i in range(632):
+            rows.append({
+                "Параметр": "Арки" if i % 2 == 0 else "Пороги",
+                "Город": "Москва" if i % 3 else "Санкт-Петербург",
+                "Показы": 1200 + i,
+                "Просмотры": 140 + (i % 50),
+                "Контакты": 8 + (i % 7),
+                "Расходы": 900 + (i * 3),
+            })
+        frame = pd.DataFrame(rows)
+        result = diagnose_ads(frame)
+        self.assertEqual(len(result), 632)
+        self.assertEqual(result[0]["index"], 0)
+        self.assertTrue(all("baseline_ads" in item for item in result))
+
     def test_empty_frame_is_supported(self):
         self.assertEqual(diagnose_ads(self.make_frame().iloc[0:0]), [])
 

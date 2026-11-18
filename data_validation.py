@@ -153,10 +153,14 @@ def validate_export(
         and (pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c]))
     ]
     summary_rows: list[int] = []
-    for index, row in df.iterrows():
-        texts = [_cell_text(row[c]) for c in text_columns]
-        if any(any(word in text for word in SUMMARY_WORDS) for text in texts):
-            summary_rows.append(int(index) + 1)
+    if text_columns:
+        text_frame = df[text_columns].fillna("").astype(str)
+        summary_mask = pd.Series(False, index=df.index)
+        for column in text_columns:
+            values = text_frame[column].str.casefold()
+            for word in SUMMARY_WORDS:
+                summary_mask |= values.str.contains(word, regex=False, na=False)
+        summary_rows = [int(index) + 1 for index in df.index[summary_mask]]
     if summary_rows:
         warnings.append(
             "Возможные строки итогов/сводки (номера строк в исходной таблице): "
