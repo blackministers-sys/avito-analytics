@@ -574,7 +574,11 @@ def analyze():
         LAST_EXPORT = df.copy()
         # Evidence-based stage diagnosis and vehicle hierarchy analysis.
         vehicle_report = analyze_vehicle_groups(df)
-        ad_diagnostics = {item['index']: item for item in diagnose_ads(df)}
+        # Per-ad funnel diagnosis is intentionally deferred: the prior implementation
+        # can exceed the synchronous request budget on large Avito exports.
+        # Category-level diagnostics remain enabled and per-ad CPA decisions are
+        # computed below from vectorized cohort benchmarks.
+        ad_diagnostics = {}
         category_diagnostics = diagnose_categories(df)
 
         # Persist an immutable snapshot. The export's reporting period is not parsed yet,
