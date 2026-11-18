@@ -121,7 +121,7 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
     by_city_category = {}
     by_category = {}
     all_peer_values = {key: [] for key in ("ctr", "view_to_contact", "cost_per_view")}
-    for idx, row in frame.loc[eligible.index].iterrows():
+    for idx, row in frame.loc[eligible.index].to_dict(orient="index").items():
         category = row.get(product_group, "")
         city = row.get("Город", "")
         by_city_category.setdefault((category, city), []).append(idx)
@@ -167,8 +167,8 @@ def diagnose_ads(frame: pd.DataFrame) -> list[dict]:
         return float((at(middle - 1) + at(middle)) / 2)
 
     results = []
-    for idx, row in frame.iterrows():
-        own_values = metric_frame.loc[idx]
+    for idx, row in frame.to_dict(orient="index").items():
+        own_values = metric_frame.loc[idx].to_dict()
         metrics = {
             "ads": 1,
             "shows": float(row["Показы"]),
