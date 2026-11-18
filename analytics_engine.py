@@ -26,7 +26,6 @@ def _metrics(frame: pd.DataFrame) -> dict:
         "contacts": contacts,
         "spend": spend,
         "revenue": revenue,
-        "drr": _safe_ratio(spend, revenue) * 100,
         "ctr": _safe_ratio(views, shows),
         "view_to_contact": _safe_ratio(contacts, views),
         "cost_per_view": _safe_ratio(spend, views),
