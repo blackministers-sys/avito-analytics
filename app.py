@@ -674,7 +674,7 @@ def analyze():
                 action = "compare"
                 next_step = f"Стоимость контакта близка к медиане аналогов {benchmark_scope}; продолжайте наблюдение и сравните качество обращений."
             if benchmark_cpa > 0 and action not in ("check", "insufficient"):
-                next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {len(peers)}."
+                next_step += f" Медиана аналогов: {money(benchmark_cpa)}; объявлений в сравнении: {peer_count}."
             funnel_diag = ad_diagnostics.get(idx, {})
             funnel_stage = funnel_diag.get('stage', 'Нужен ориентир')
             funnel_hypothesis = funnel_diag.get('hypothesis', 'Недостаточно данных для гипотезы.')
