@@ -1,0 +1,25 @@
+name: Vehicle analytics tests
+
+on:
+  pull_request:
+    paths:
+      - "vehicle_analytics.py"
+      - "tests/test_vehicle_analytics.py"
+      - ".github/workflows/vehicle-analytics.yml"
+  push:
+    branches: [main]
+    paths:
+      - "vehicle_analytics.py"
+      - "tests/test_vehicle_analytics.py"
+      - ".github/workflows/vehicle-analytics.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip pandas pytest
+      - run: python -m pytest -q tests/test_vehicle_analytics.py

@@ -6,6 +6,7 @@ from datetime import datetime
 import pandas as pd
 from data_validation import validate_export, select_identity_columns
 from analytics_engine import diagnose_ads, diagnose_categories
+from vehicle_analytics import analyze_vehicle_groups
 from history_store import HistoryStore
 from excel_import import read_excel_preserving_hyperlinks
 from flask import Flask, request, render_template_string, send_file, redirect
@@ -261,6 +262,29 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 <section class="panel" style="margin-top:15px"><div class="upload"><h2>Категории и параметры</h2><a href="/download" style="color:var(--blue)">Скачать результаты CSV</a></div><div class="tablebox"><table id="categorySummaryTable"><thead><tr><th>Категория / параметр</th><th>Показы</th><th>Просмотры</th><th>Контакты</th><th>CTR</th><th>CR</th><th>Расходы</th><th>Выручка</th><th>₽/контакт</th></tr></thead><tbody>
 {% for r in categories %}<tr class="category-summary-row" data-category="{{ r.name }}"><td>{{ r.name }}</td><td>{{ r.shows }}</td><td>{{ r.views }}</td><td>{{ r.contacts }}</td><td>{{ r.ctr }}</td><td>{{ r.rate }}</td><td>{{ r.spend }}</td><td>{{ r.revenue }}</td><td>{{ r.cpa }}</td></tr>{% endfor %}
 </tbody></table></div></section>
+<section class="panel" style="margin-top:15px" id="vehicleAnalytics">
+<h2>Аналитика по автомобилям: марка → модель → поколение</h2>
+<p class="muted small">Группировка распознаёт автомобиль по отдельным полям, заголовку и параметрам. Неопределённые автомобили остаются в отдельной группе, а не распределяются догадкой. Сортировка пересчитывается по всей загруженной выборке.</p>
+<div class="grid">
+<div class="metric"><div class="label">Распознано марок/моделей</div><div class="value">{{ vehicle_report.coverage.identified }} / {{ vehicle_report.coverage.rows }}</div><div class="muted small">{{ "%.1f"|format(vehicle_report.coverage.share) }}% строк с распознанным автомобилем</div></div>
+<div class="metric"><div class="label">Определено поколений</div><div class="value">{{ vehicle_report.coverage.generation_known }}</div><div class="muted small">Строк с подтверждённым кодом/поколением</div></div>
+</div>
+{% for insight in vehicle_report.insights %}<div class="rec"><span class="tag {{ 'bad' if insight.kind == 'bad' else 'warn' if insight.kind == 'warn' else '' }}">{{ 'ПРОВЕРИТЬ' if insight.kind == 'bad' else 'НЕДОСТАТОЧНО ДАННЫХ' if insight.kind == 'warn' else 'ПОТЕНЦИАЛ' }}</span><strong>{{ insight.title }}</strong><div class="muted">{{ insight.text }}</div></div>{% endfor %}
+<div class="filters" style="margin:12px 0">
+<label>Уровень <select id="vehicleLevel"><option value="generation">Марка + модель + поколение</option><option value="model">Марка + модель</option><option value="make">Марка</option></select></label>
+<label>Сортировка <select id="vehicleSort"><option value="contacts">Контакты: больше → меньше</option><option value="cpa">CPA: дешевле → дороже</option><option value="views">Просмотры: больше → меньше</option><option value="cr">Конверсия: выше → ниже</option><option value="spend">Расходы: больше → меньше</option><option value="ads">Объявления: больше → меньше</option><option value="no_contact_ads">Объявления без контактов</option></select></label>
+<label>Поиск <input id="vehicleSearch" type="search" placeholder="Марка, модель или поколение"></label>
+</div>
+<div class="muted small" id="vehicleCount" style="margin-bottom:8px"></div>
+<div class="tablebox"><table id="vehicleTable"><thead><tr><th>Автомобиль</th><th>Объявления</th><th>Просмотры</th><th>Контакты</th><th>CR</th><th>Расходы</th><th>CPA</th><th>Без контактов</th><th>Города</th><th>Распознавание</th></tr></thead><tbody>
+{% for g in vehicle_report.groups %}
+<tr class="vehicle-row" data-make="{{ g.make }}" data-model="{{ g.model }}" data-generation="{{ g.generation }}" data-ads="{{ g.ads }}" data-shows="{{ g.shows }}" data-views="{{ g.views }}" data-contacts="{{ g.contacts }}" data-cr="{{ g.cr }}" data-spend="{{ g.spend }}" data-cpa="{{ g.cpa if g.cpa is not none else 999999999999 }}" data-no-contact-ads="{{ g.no_contact_ads }}" data-cities="{{ g.cities }}">
+<td><strong>{{ g.make }}</strong> · {{ g.model }} · {{ g.generation }}</td><td>{{ g.ads }}</td><td>{{ integer(g.views) }}</td><td>{{ integer(g.contacts) }}</td><td>{{ "%.2f"|format(g.cr * 100) }}%</td><td>{{ money(g.spend) }}</td><td>{{ money(g.cpa) if g.cpa is not none else "—" }}</td><td>{{ g.no_contact_ads }}</td><td>{{ g.cities }}</td><td>{{ "Высокая" if g.confidence == "high" else "Средняя" if g.confidence == "medium" else "Низкая" }}</td>
+</tr>
+{% endfor %}
+</tbody></table></div>
+<p class="muted small">Важно: объединённые группы показывают наблюдаемую эффективность, но не доказывают, что именно модель автомобиля стала причиной результата. Учитывайте различия по городу, типу детали, бюджету и периоду. Нулевые контакты сохраняются в рейтинге.</p>
+</section>
 <section class="panel" style="margin-top:15px">
 <h2>Диагностика воронки по категориям</h2>
 <p class="muted small">Для каждой категории указан наиболее вероятный этап ограничения. Это гипотеза по данным выгрузки, а не доказанная причина. При отсутствии независимого ориентира система это показывает.</p>
@@ -306,6 +330,36 @@ footer{margin-top:22px;color:var(--muted);font-size:11px}
 </div>
 <script>
 (function(){
+ const vehicleBody=document.querySelector('#vehicleTable tbody');
+ if(vehicleBody){
+   const vehicleRows=Array.from(vehicleBody.querySelectorAll('.vehicle-row'));
+   const level=document.getElementById('vehicleLevel'), sort=document.getElementById('vehicleSort'), search=document.getElementById('vehicleSearch'), count=document.getElementById('vehicleCount');
+   function renderVehicles(){
+     const groups=new Map();
+     vehicleRows.forEach(r=>{
+       const make=r.dataset.make, model=r.dataset.model, generation=r.dataset.generation;
+       const key=level.value==='make'?make:level.value==='model'?make+'||'+model:make+'||'+model+'||'+generation;
+       if(!groups.has(key))groups.set(key,{key,make,model:level.value==='make'?'':model,generation:level.value==='generation'?generation:'',ads:0,shows:0,views:0,contacts:0,spend:0,noContactAds:0,cities:0});
+       const g=groups.get(key);g.ads+=Number(r.dataset.ads);g.shows+=Number(r.dataset.shows);g.views+=Number(r.dataset.views);g.contacts+=Number(r.dataset.contacts);g.spend+=Number(r.dataset.spend);g.noContactAds+=Number(r.dataset.noContactAds);g.cities=Math.max(g.cities,Number(r.dataset.cities));
+     });
+     let list=[...groups.values()].map(g=>({...g,cr:g.views?g.contacts/g.views:0,cpa:g.contacts?g.spend/g.contacts:null}));
+     const q=search.value.trim().toLocaleLowerCase('ru');
+     if(q)list=list.filter(g=>(g.make+' '+g.model+' '+g.generation).toLocaleLowerCase('ru').includes(q));
+     const k=sort.value;
+     list.sort((a,b)=>{if(k==='cpa')return (a.cpa??Infinity)-(b.cpa??Infinity);return b[k]-a[k]});
+     vehicleBody.replaceChildren();
+     const fmt=x=>Math.round(x).toLocaleString('ru-RU'), money=x=>x==null?'—':Math.round(x).toLocaleString('ru-RU')+' ₽';
+     list.forEach(g=>{
+       const tr=document.createElement('tr');
+       [g.make,g.model,g.generation].filter(Boolean);
+       const name=[g.make,g.model,g.generation].filter(Boolean).join(' · ');
+       [name,fmt(g.ads),fmt(g.views),fmt(g.contacts),(g.cr*100).toLocaleString('ru-RU',{maximumFractionDigits:2})+'%',money(g.spend),money(g.cpa),fmt(g.noContactAds),fmt(g.cities),'—'].forEach(v=>{const td=document.createElement('td');td.textContent=v;tr.appendChild(td)});
+       vehicleBody.appendChild(tr);
+     });
+     count.textContent='Групп: '+list.length+' · Исходных групп поколений: '+vehicleRows.length;
+   }
+   [level,sort].forEach(el=>el.addEventListener('change',renderVehicles));search.addEventListener('input',renderVehicles);renderVehicles();
+ }
  const table = document.querySelector('.data-row')?.closest('table');
  if (!table) return;
  const body = table.querySelector('tbody');
@@ -518,7 +572,8 @@ def analyze():
         )
         df = prepare_data(source)
         LAST_EXPORT = df.copy()
-        # Evidence-based stage diagnosis for every ad and each top-level category.
+        # Evidence-based stage diagnosis and vehicle hierarchy analysis.
+        vehicle_report = analyze_vehicle_groups(df)
         ad_diagnostics = {item['index']: item for item in diagnose_ads(df)}
         category_diagnostics = diagnose_categories(df)
 
@@ -851,7 +906,7 @@ def analyze():
         return render_template_string(PAGE, has_data=True, error=None, kpis=kpis, funnel=funnel,
             validation_report=validation_report, row_count=len(df), recommendations=recommendations, cities=cities,
             categories=categories, rows=rows, decision_actions=decision_actions, decision_counts=decision_counts,
-            category_diagnostics=category_diagnostics, integer=integer, pct=pct, history_result=history_result)
+            category_diagnostics=category_diagnostics, vehicle_report=vehicle_report, integer=integer, pct=pct, history_result=history_result)
     except Exception as exc:
         return render_template_string(PAGE, has_data=False,
             error=f"Не удалось обработать файл: {str(exc)}"), 400
