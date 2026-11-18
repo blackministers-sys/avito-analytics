@@ -587,6 +587,43 @@ def analyze():
         # materially different economics. Require at least three other eligible listings.
         eligible_peers = df[(df["Просмотры"] >= 100) & (df["Контакты"] >= 3)].copy()
         eligible_peers["_peer_cpa"] = eligible_peers["Расходы"] / eligible_peers["Контакты"]
+
+        # Precompute peer CPA distributions once. Filtering the full eligible DataFrame
+        # for every listing made this route quadratic and caused Gunicorn worker timeouts
+        # on normal multi-thousand-row Avito exports.
+        from collections import defaultdict
+        from bisect import bisect_left
+
+        city_category_cpas = defaultdict(list)
+        category_cpas = defaultdict(list)
+        eligible_indexes = set(eligible_peers.index)
+        for city, category, peer_cpa in eligible_peers[["Город", "Категория", "_peer_cpa"]].itertuples(index=False, name=None):
+            city_category_cpas[(city, category)].append(float(peer_cpa))
+            category_cpas[category].append(float(peer_cpa))
+        for values in city_category_cpas.values():
+            values.sort()
+        for values in category_cpas.values():
+            values.sort()
+
+        def median_without_self(values, own_cpa, exclude_self):
+            if not values:
+                return 0.0
+            if not exclude_self:
+                count = len(values)
+                middle = count // 2
+                return values[middle] if count % 2 else (values[middle - 1] + values[middle]) / 2
+            pos = bisect_left(values, own_cpa)
+            if pos >= len(values) or values[pos] != own_cpa:
+                exclude_self = False
+            count = len(values) - int(exclude_self)
+            if count <= 0:
+                return 0.0
+            middle = count // 2
+            def at(index):
+                source_index = index if not exclude_self or index < pos else index + 1
+                return values[source_index]
+            return at(middle) if count % 2 else (at(middle - 1) + at(middle)) / 2
+
         positive_spend = df.loc[df["Расходы"] > 0, "Расходы"]
         median_spend = float(positive_spend.median()) if not positive_spend.empty else 0.0
         rows = []
@@ -596,20 +633,20 @@ def analyze():
             rv = float(r["Просмотры"])
             rc = float(r["Контакты"])
             rs = float(r["Расходы"])
-            same_city_category = eligible_peers[
-                (eligible_peers["Город"] == r["Город"]) &
-                (eligible_peers["Категория"] == r["Категория"]) &
-                (eligible_peers.index != idx)
-            ]
+            city_values = city_category_cpas.get((r["Город"], r["Категория"]), [])
+            category_values = category_cpas.get(r["Категория"], [])
+            exclude_self = idx in eligible_indexes
             benchmark_scope = "в том же городе и категории"
-            peers = same_city_category
-            if len(peers) < 3:
-                peers = eligible_peers[
-                    (eligible_peers["Категория"] == r["Категория"]) &
-                    (eligible_peers.index != idx)
-                ]
+            peer_values = city_values
+            peer_count = len(peer_values) - int(exclude_self)
+            if peer_count < 3:
+                peer_values = category_values
+                peer_count = len(peer_values) - int(exclude_self)
                 benchmark_scope = "в той же категории по всем городам"
-            benchmark_cpa = float(peers["_peer_cpa"].median()) if len(peers) >= 3 else 0.0
+            benchmark_cpa = (
+                median_without_self(peer_values, obj_cpa, exclude_self)
+                if peer_count >= 3 else 0.0
+            )
             if rc == 0 and rs > 0 and rv >= 100:
                 status, kind = "Проверить расходы", "bad"
                 action = "check"
