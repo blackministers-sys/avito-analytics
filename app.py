@@ -597,9 +597,9 @@ def analyze():
         city_category_cpas = defaultdict(list)
         category_cpas = defaultdict(list)
         eligible_indexes = set(eligible_peers.index)
-        for peer in eligible_peers.itertuples():
-            city_category_cpas[(peer.Город, peer.Категория)].append(float(peer._asdict()["_peer_cpa"]))
-            category_cpas[peer.Категория].append(float(peer._asdict()["_peer_cpa"]))
+        for city, category, peer_cpa in eligible_peers[["Город", "Категория", "_peer_cpa"]].itertuples(index=False, name=None):
+            city_category_cpas[(city, category)].append(float(peer_cpa))
+            category_cpas[category].append(float(peer_cpa))
         for values in city_category_cpas.values():
             values.sort()
         for values in category_cpas.values():
