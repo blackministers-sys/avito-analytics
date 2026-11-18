@@ -99,6 +99,8 @@ def _contains_alias(text, alias):
     return re.search(pattern, text, flags=re.I) is not None
 
 def identify_vehicle(row):
+    if isinstance(row, pd.Series):
+        row = row.to_dict()
     """Prefer explicit columns; otherwise parse title/parameter conservatively."""
     title = " ".join(str(row.get(k, "") or "") for k in (
         "Название объявления", "Параметр", "Подкатегория", "Категория"
