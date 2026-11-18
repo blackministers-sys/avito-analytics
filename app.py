@@ -108,7 +108,25 @@ def prepare_data(df):
     df["Выручка"] = df["Выручка доставленных товаров"]
     df["Стоимость контакта, ₽"] = (df["Расходы"] / df["Контакты"].replace(0, pd.NA)).fillna(0)
     df["Стоимость просмотра, ₽"] = (df["Расходы"] / df["Просмотры"].replace(0, pd.NA)).fillna(0)
-    df["Объект"] = df.apply(make_label, axis=1)
+    # Build listing labels column-wise; DataFrame.apply(axis=1) creates one
+    # Series per row and was needlessly expensive for larger exports.
+    title = df["Название объявления"].fillna("").astype(str).str.strip()
+    ad_number = df["Номер объявления"].fillna("").astype(str).str.strip()
+    valid_title = ~title.str.lower().isin(["", "nan", "none"])
+    valid_number = ~ad_number.str.lower().isin(["", "nan", "none"])
+    labels = title.where(valid_title, ad_number.where(valid_number, ""))
+    fallback_mask = labels.eq("")
+    if fallback_mask.any():
+        fallback_parts = []
+        for column in ["Город", "Категория", "Подкатегория", "Параметр", "Цена"]:
+            values = df[column].fillna("").astype(str).str.strip()
+            values = values.where(~values.str.lower().isin(["nan", "none"]), "")
+            fallback_parts.append(values)
+        fallback = fallback_parts[0]
+        for part in fallback_parts[1:]:
+            fallback = fallback + part.where(part.eq(""), " · " + part)
+        labels = labels.where(~fallback_mask, fallback)
+    df["Объект"] = labels.where(labels.ne(""), "Строка без названия")
     return df
 
 def make_label(row):
