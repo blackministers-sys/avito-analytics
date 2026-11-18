@@ -159,9 +159,9 @@ def analyze_vehicle_groups(frame: pd.DataFrame) -> dict:
     if frame is None or frame.empty:
         return {"groups": [], "coverage": {"rows": 0, "identified": 0, "share": 0.0}, "insights": []}
     data = frame.copy()
-    parsed = data.apply(lambda row: identify_vehicle(row), axis=1, result_type="expand")
+    parsed = pd.DataFrame([identify_vehicle(row) for row in data.to_dict(orient="records")], index=data.index)
     parsed.columns = ["Марка авто", "Модель авто", "Поколение авто", "Уверенность распознавания"]
-    data = pd.concat([data.reset_index(drop=True), parsed.reset_index(drop=True)], axis=1)
+    data = pd.concat([data, parsed], axis=1)
     data["Показы"] = pd.to_numeric(data.get("Показы", 0), errors="coerce").fillna(0)
     data["Просмотры"] = pd.to_numeric(data.get("Просмотры", 0), errors="coerce").fillna(0)
     data["Контакты"] = pd.to_numeric(data.get("Контакты", 0), errors="coerce").fillna(0)
