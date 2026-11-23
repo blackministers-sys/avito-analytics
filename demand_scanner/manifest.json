@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Avito Demand Scanner — диагностика",
+  "version": "0.1.0",
+  "description": "Диагностика интерфейса аналитики спроса Avito для последующей автоматизации сбора по городам.",
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://www.avito.ru/*",
+    "https://*.avito.ru/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.avito.ru/*",
+        "https://*.avito.ru/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page-hook.js"
+      ],
+      "matches": [
+        "https://www.avito.ru/*",
+        "https://*.avito.ru/*"
+      ]
+    }
+  ]
+}
